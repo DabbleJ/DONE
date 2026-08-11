@@ -1,27 +1,14 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
-
-const queryClient = new QueryClient();
-
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
-
-export default App;
+import { Toaster } from '@/components/ui/toaster';
+import { Toaster as Sonner } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import Index from './pages/Index';
+import Login from './pages/Login';
+import NotFound from './pages/NotFound';
+import { SessionProvider, useSession } from './contexts/SessionContext';
+import { DoneProvider } from './contexts/DoneContext';
+const queryClient=new QueryClient();
+function Gate({children}:{children:React.ReactNode}){const{session,demo,loading}=useSession();if(loading)return <div className="flex min-h-screen items-center justify-center"><div className="brand text-4xl">DONE<span>.</span></div></div>;return session||demo?children:<Navigate to="/login" replace/>}
+function AppRoutes(){const{session,demo}=useSession();return <Routes><Route path="/login" element={session||demo?<Navigate to="/" replace/>:<Login/>}/><Route path="/" element={<Gate><DoneProvider><Index/></DoneProvider></Gate>}/><Route path="*" element={<NotFound/>}/></Routes>}
+export default function App(){return <QueryClientProvider client={queryClient}><TooltipProvider><Toaster/><Sonner/><BrowserRouter><SessionProvider><AppRoutes/></SessionProvider></BrowserRouter></TooltipProvider></QueryClientProvider>}
