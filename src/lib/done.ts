@@ -14,19 +14,23 @@ export const starterData: DoneData = {
     { id: 'global-resilience', name: 'Global Resilience', owner: 'Heather', color: '#E7DFF3' },
   ],
   projects: [{ id: 'trip', name: 'Summer in Lisbon', emoji: '✈️', color: '#DDF0D9', completed: 4, total: 9 }, { id: 'room', name: "Milo's big-kid room", emoji: '🪁', color: '#F9DED7', completed: 2, total: 7 }],
-  tasks: [
-    { id: '1', title: 'Book dentist appointments', note: 'Both kids, ideally after school', due: 'Today', category: 'family', assignee: 'you', energy: 'quick', completed: false, createdAt: '2026-08-18' },
-    { id: '2', title: 'Send passport photos', due: 'Today', category: 'admin', assignee: 'sam', project: 'trip', energy: 'quick', completed: false, createdAt: '2026-08-17' },
-    { id: '3', title: 'Order new cabinet hinge', due: 'This week', category: 'home', assignee: 'you', energy: 'errand', completed: false, createdAt: '2026-08-16' },
-    { id: '4', title: "Pick up Nana's birthday gift", due: 'Friday', category: 'errands', assignee: 'sam', energy: 'errand', completed: false, createdAt: '2026-08-15' },
-    { id: '5', title: 'Refill dog food', category: 'home', assignee: 'you', energy: 'quick', completed: false, createdAt: '2026-08-14' },
-  ], settings: { doneVoice: true, celebrations: true, quietHours: true },
+  tasks: [],
+  settings: { doneVoice: true, celebrations: true, quietHours: true },
 };
+
+const legacySampleTasks = new Map([
+  ['1', 'Book dentist appointments'],
+  ['2', 'Send passport photos'],
+  ['3', 'Order new cabinet hinge'],
+  ['4', "Pick up Nana's birthday gift"],
+  ['5', 'Refill dog food'],
+]);
 
 export function mergeStarterData(data: DoneData): DoneData {
   const existingCategories = data.categories ?? [];
   const missingCategories = starterData.categories.filter(category => !existingCategories.some(existing => existing.id === category.id));
-  return { ...data, categories: [...existingCategories, ...missingCategories] };
+  const tasks = (data.tasks ?? []).filter(task => legacySampleTasks.get(task.id) !== task.title);
+  return { ...data, tasks, categories: [...existingCategories, ...missingCategories] };
 }
 
 const dueScore = (due?: string) => due === 'Today' ? 8 : due === 'Tomorrow' ? 6 : due === 'Friday' ? 4 : due === 'This week' ? 3 : 0;
