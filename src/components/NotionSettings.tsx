@@ -74,7 +74,7 @@ export function NotionSettings() {
         ?? data.categories.find(candidate => categoryName.includes(candidate.name.toLowerCase()))
         ?? data.categories.find(candidate => candidate.id === 'admin')!;
       const assigneeName = item.assignee?.toLowerCase() ?? '';
-      const assignee = assigneeName.includes('heather') ? 'sam' : 'you';
+      const assignee = assigneeName.includes('heather') ? 'heather' : assigneeName.includes('jemal') ? 'jemal' : 'household';
       const due = item.dueDate
         ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(item.dueDate))
         : undefined;
