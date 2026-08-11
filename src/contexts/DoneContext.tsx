@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { DoneData, mergeStarterData, starterData, Task } from '@/lib/done';
+import { BooleanSetting, DoneData, mergeStarterData, starterData, Task } from '@/lib/done';
 import { useSession } from './SessionContext';
 
 type DoneValue = {
@@ -11,7 +11,8 @@ type DoneValue = {
   snoozeTask: (id: string) => void;
   moveTask: (id: string, direction: 'up' | 'down') => void;
   reorderTasks: (activeId: string, overId: string) => void;
-  toggleSetting: (key: keyof DoneData['settings']) => void;
+  toggleSetting: (key: BooleanSetting) => void;
+  setTimezone: (timezone: string) => void;
 };
 
 const DoneContext = createContext<DoneValue | null>(null);
@@ -67,9 +68,10 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
     tasks.splice(overIndex, 0, active);
     return { ...d, tasks: tasks.map((task, order) => ({ ...task, order })) };
   });
-  const toggleSetting = (key: keyof DoneData['settings']) => update(d => ({ ...d, settings: { ...d.settings, [key]: !d.settings[key] } }));
+  const toggleSetting = (key: BooleanSetting) => update(d => ({ ...d, settings: { ...d.settings, [key]: !d.settings[key] } }));
+  const setTimezone = (timezone: string) => update(d => ({ ...d, settings: { ...d.settings, timezone } }));
 
-  return <DoneContext.Provider value={{ data, toggleTask, addTask, addTasks, snoozeTask, moveTask, reorderTasks, toggleSetting }}>{children}</DoneContext.Provider>;
+  return <DoneContext.Provider value={{ data, toggleTask, addTask, addTasks, snoozeTask, moveTask, reorderTasks, toggleSetting, setTimezone }}>{children}</DoneContext.Provider>;
 }
 
 export const useDone = () => {

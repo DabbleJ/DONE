@@ -2,7 +2,8 @@ export type Member = { id: string; name: string; initial: string; color: string 
 export type Category = { id: string; name: string; color: string; owner?: string };
 export type Project = { id: string; name: string; emoji: string; color: string; completed: number; total: number };
 export type Task = { id: string; title: string; note?: string; due?: string; category: string; assignee: string; project?: string; energy: 'quick' | 'focus' | 'errand'; priority?: 'low' | 'medium' | 'high'; order?: number; completed: boolean; createdAt: string; snoozed?: boolean };
-export type DoneData = { tasks: Task[]; projects: Project[]; members: Member[]; categories: Category[]; settings: { doneVoice: boolean; celebrations: boolean; quietHours: boolean } };
+export type BooleanSetting = 'doneVoice' | 'celebrations' | 'quietHours';
+export type DoneData = { tasks: Task[]; projects: Project[]; members: Member[]; categories: Category[]; settings: { doneVoice: boolean; celebrations: boolean; quietHours: boolean; timezone: string } };
 export const starterData: DoneData = {
   members: [],
   categories: [
@@ -15,7 +16,7 @@ export const starterData: DoneData = {
   ],
   projects: [],
   tasks: [],
-  settings: { doneVoice: true, celebrations: true, quietHours: true },
+  settings: { doneVoice: true, celebrations: true, quietHours: true, timezone: 'America/Los_Angeles' },
 };
 
 const legacySampleTasks = new Map([
@@ -34,7 +35,8 @@ export function mergeStarterData(data: DoneData): DoneData {
   const tasks = (data.tasks ?? []).filter(task => legacySampleTasks.get(task.id) !== task.title).map((task, index) => ({ ...task, order: task.order ?? index }));
   const members = (data.members ?? []).filter(member => legacyMembers.get(member.id) !== member.name);
   const projects = (data.projects ?? []).filter(project => legacyProjects.get(project.id) !== project.name);
-  return { ...data, tasks, members, projects, categories: [...existingCategories, ...missingCategories] };
+  const settings = { ...starterData.settings, ...(data.settings ?? {}) };
+  return { ...data, tasks, members, projects, settings, categories: [...existingCategories, ...missingCategories] };
 }
 
 const dueScore = (due?: string) => due === 'Today' ? 8 : due === 'Tomorrow' ? 6 : due === 'Friday' ? 4 : due === 'This week' ? 3 : 0;
