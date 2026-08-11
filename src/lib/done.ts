@@ -24,8 +24,9 @@ export const starterData: DoneData = {
 };
 
 export function mergeStarterData(data: DoneData): DoneData {
-  const missingCategories = starterData.categories.filter(category => !data.categories.some(existing => existing.id === category.id));
-  return { ...data, categories: [...data.categories, ...missingCategories] };
+  const existingCategories = data.categories ?? [];
+  const missingCategories = starterData.categories.filter(category => !existingCategories.some(existing => existing.id === category.id));
+  return { ...data, categories: [...existingCategories, ...missingCategories] };
 }
 
 const dueScore = (due?: string) => due === 'Today' ? 8 : due === 'Tomorrow' ? 6 : due === 'Friday' ? 4 : due === 'This week' ? 3 : 0;

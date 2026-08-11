@@ -13,7 +13,8 @@ export default function Login(){
 
   useEffect(() => {
     const updatePasswordInputs = () => {
-      authRef.current?.querySelectorAll<HTMLInputElement>('input[name="password"]').forEach((input) => {
+      const selector = 'input[name="password"], input[autocomplete="current-password"], input[autocomplete="new-password"]';
+      authRef.current?.querySelectorAll<HTMLInputElement>(selector).forEach((input) => {
         input.type = showPassword ? 'text' : 'password';
       });
     };
