@@ -20,6 +20,7 @@ type TaskFilter = { type: 'category' | 'due'; value: string; label: string } | n
 
 const nav = [{ id: 'now', label: 'Now', icon: Sun }, { id: 'tasks', label: 'Everything', icon: ListTodo }, { id: 'projects', label: 'Projects', icon: FolderKanban }, { id: 'household', label: 'Us', icon: Users }, { id: 'settings', label: 'Settings', icon: Settings }] as const;
 const timezones = [{ value: 'America/Los_Angeles', label: 'Pacific Time' }, { value: 'America/Denver', label: 'Mountain Time' }, { value: 'America/Chicago', label: 'Central Time' }, { value: 'America/New_York', label: 'Eastern Time' }, { value: 'Europe/London', label: 'London' }, { value: 'Europe/Berlin', label: 'Central Europe' }, { value: 'Asia/Dubai', label: 'Dubai' }, { value: 'Asia/Kolkata', label: 'India' }, { value: 'Asia/Tokyo', label: 'Tokyo' }, { value: 'Australia/Sydney', label: 'Sydney' }, { value: 'Pacific/Auckland', label: 'Auckland' }, { value: 'UTC', label: 'UTC' }];
+const DONE_APP_URL = 'https://done-family.vercel.app';
 const ordered = (tasks: Task[]) => [...tasks].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 const titleCase = (value?: string) => value ? value.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()) : 'Household';
 
@@ -290,7 +291,7 @@ function HouseholdView() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [color, setColor] = useState(memberColors[0]);
-  const inviteLink = `${window.location.origin}/login?invited=1`;
+  const inviteLink = `${DONE_APP_URL}/login?invited=1`;
 
   const closeCreator = () => {
     setCreating(false);
@@ -326,13 +327,14 @@ function HouseholdView() {
 
     setSendingInvite(true);
     const { data: response, error } = await supabase.functions.invoke('send-household-invite', {
-      body: { email: cleanEmail, redirectTo: `${window.location.origin}/auth/callback` },
+      body: { email: cleanEmail },
     });
     setSendingInvite(false);
     if (error || response?.error) {
       toast.error(response?.error ?? 'The invitation could not be sent. Please try again.');
       return;
     }
+
     toast.success(`Invitation sent to ${cleanEmail}.`);
     closeInvite();
   };

@@ -6,6 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const doneAppUrl = 'https://done-family.vercel.app'
+
 const jsonResponse = (body: Record<string, unknown>, status = 200) => new Response(
   JSON.stringify(body),
   { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -39,7 +41,6 @@ serve(async (req) => {
 
     const body = await req.json()
     const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : ''
-    const redirectTo = typeof body?.redirectTo === 'string' ? body.redirectTo : ''
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailPattern.test(email) || email.length > 254) {
       return jsonResponse({ error: 'Enter a valid email address.' }, 400)
@@ -48,23 +49,12 @@ serve(async (req) => {
       return jsonResponse({ error: 'Invite someone other than yourself.' }, 400)
     }
 
-    const requestOrigin = req.headers.get('Origin')
-    let safeRedirect: string | undefined
-    if (requestOrigin && redirectTo) {
-      const parsedRedirect = new URL(redirectTo)
-      if (parsedRedirect.origin !== requestOrigin || parsedRedirect.pathname !== '/auth/callback') {
-        console.warn('[send-household-invite] rejected unsafe redirect', { userId: user.id })
-        return jsonResponse({ error: 'The invitation destination is invalid.' }, 400)
-      }
-      safeRedirect = parsedRedirect.toString()
-    }
-
     const adminClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
     const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-      redirectTo: safeRedirect,
+      redirectTo: `${doneAppUrl}/auth/callback`,
       data: { invited_by: user.id },
     })
 
