@@ -21,25 +21,40 @@ const DoneContext = createContext<DoneValue | null>(null);
 
 const orderedTasks = (tasks: Task[]) => [...tasks].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 const normalizeOrder = (tasks: Task[]) => orderedTasks(tasks).map((task, index) => ({ ...task, order: index }));
+const readStoredData = (key: string) => {
+  const saved = localStorage.getItem(key);
+  return saved ? mergeStarterData(JSON.parse(saved) as DoneData) : starterData;
+};
 
 export function DoneProvider({ children }: { children: React.ReactNode }) {
   const { session } = useSession();
-  const [data, setData] = useState<DoneData>(() => {
-    const saved = localStorage.getItem('done-state');
-    return saved ? mergeStarterData(JSON.parse(saved) as DoneData) : starterData;
-  });
+  const storageKey = session ? `done-state-${session.user.id}` : 'done-state-demo';
+  const [data, setData] = useState<DoneData>(() => readStoredData(storageKey));
+  const [hydrated, setHydrated] = useState(!session);
 
-  useEffect(() => { setData(current => mergeStarterData(current)); }, []);
   useEffect(() => {
-    if (!session) return;
+    if (!session) {
+      setData(readStoredData('done-state-demo'));
+      setHydrated(true);
+      return;
+    }
+
+    let active = true;
+    setHydrated(false);
     supabase.from('app_state').select('data').eq('user_id', session.user.id).single().then(({ data: row }) => {
-      if (row?.data && Array.isArray((row.data as unknown as DoneData).tasks)) setData(mergeStarterData(row.data as unknown as DoneData));
+      if (!active) return;
+      const remote = row?.data as unknown as DoneData | undefined;
+      setData(remote && Array.isArray(remote.tasks) ? mergeStarterData(remote) : readStoredData(storageKey));
+      setHydrated(true);
     });
-  }, [session]);
+    return () => { active = false; };
+  }, [session, storageKey]);
+
   useEffect(() => {
-    localStorage.setItem('done-state', JSON.stringify(data));
+    if (!hydrated) return;
+    localStorage.setItem(storageKey, JSON.stringify(data));
     if (session) supabase.from('app_state').upsert({ user_id: session.user.id, data: JSON.parse(JSON.stringify(data)), updated_at: new Date().toISOString() }).then();
-  }, [data, session]);
+  }, [data, hydrated, session, storageKey]);
 
   const update = (fn: (d: DoneData) => DoneData) => setData(fn);
   const toggleTask = (id: string) => update(d => ({ ...d, tasks: d.tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t) }));

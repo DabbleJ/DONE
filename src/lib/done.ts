@@ -28,12 +28,21 @@ const legacySampleTasks = new Map([
 ]);
 const legacyMembers = new Map([['you', 'You'], ['sam', 'Sam'], ['milo', 'Milo']]);
 const legacyProjects = new Map([['trip', 'Summer in Lisbon'], ['room', "Milo's big-kid room"]]);
+const knownAssignees: Record<string, Omit<Member, 'id'>> = {
+  jemal: { name: 'Jemal', initial: 'J', color: '#5279B8', managed: false },
+};
 
 export function mergeStarterData(data: DoneData): DoneData {
   const existingCategories = data.categories ?? [];
   const missingCategories = starterData.categories.filter(category => !existingCategories.some(existing => existing.id === category.id));
   const tasks = (data.tasks ?? []).filter(task => legacySampleTasks.get(task.id) !== task.title).map((task, index) => ({ ...task, order: task.order ?? index }));
   const members = (data.members ?? []).filter(member => legacyMembers.get(member.id) !== member.name);
+  tasks.forEach(task => {
+    const knownMember = knownAssignees[task.assignee.toLowerCase()];
+    if (knownMember && !members.some(existing => existing.id === task.assignee || existing.name.toLowerCase() === knownMember.name.toLowerCase())) {
+      members.push({ id: task.assignee, ...knownMember });
+    }
+  });
   const projects = (data.projects ?? []).filter(project => legacyProjects.get(project.id) !== project.name);
   const settings = { ...starterData.settings, ...(data.settings ?? {}) };
   return { ...data, tasks, members, projects, settings, categories: [...existingCategories, ...missingCategories] };
@@ -42,6 +51,7 @@ export function mergeStarterData(data: DoneData): DoneData {
 const dueScore = (due?: string) => due === 'Today' ? 8 : due === 'Tomorrow' ? 6 : due === 'Friday' ? 4 : due === 'This week' ? 3 : 0;
 const priorityScore = (priority?: Task['priority']) => priority === 'high' ? 7 : priority === 'medium' ? 3 : 0;
 const orderScore = (task: Task) => Number.isFinite(task.order) ? task.order! : Number.MAX_SAFE_INTEGER;
+
 export const priorityEngine = (tasks: Task[]) => tasks.filter(t => !t.completed && !t.snoozed).sort((a,b) => orderScore(a) - orderScore(b) || dueScore(b.due) + priorityScore(b.priority) + (b.energy === 'quick' ? 2 : 0) - dueScore(a.due) - priorityScore(a.priority) - (a.energy === 'quick' ? 2 : 0)).slice(0,3);
 export const doneVoice = {
   empty: "Nothing's on fire. Go enjoy the good bit.",

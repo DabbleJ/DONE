@@ -5,6 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Onboarding } from '@/components/Onboarding';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import AuthCallback from './pages/AuthCallback';
 import Index from './pages/Index';
 import Login from './pages/Login';
 import NotFound from './pages/NotFound';
@@ -28,7 +29,7 @@ function Home() {
 
 function AppRoutes() {
   const { session, demo } = useSession();
-  return <Routes><Route path="/login" element={session || demo ? <Navigate to="/" replace /> : <Login />}/><Route path="/" element={<Gate><Home/></Gate>}/><Route path="*" element={<NotFound/>}/></Routes>;
+  return <Routes><Route path="/login" element={session || demo ? <Navigate to="/" replace /> : <Login />}/><Route path="/auth/callback" element={<AuthCallback/>}/><Route path="/" element={<Gate><Home/></Gate>}/><Route path="*" element={<NotFound/>}/></Routes>;
 }
 
 export default function App() {
