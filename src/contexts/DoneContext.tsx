@@ -6,6 +6,7 @@ import { useSession } from './SessionContext';
 type DoneValue = {
   data: DoneData;
   toggleTask: (id: string) => void;
+  updateTask: (id: string, updates: Partial<Omit<Task, 'id' | 'createdAt'>>) => void;
   addTask: (task: Task) => void;
   addTasks: (tasks: Task[]) => void;
   addMember: (member: Member) => void;
@@ -58,6 +59,7 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
 
   const update = (fn: (d: DoneData) => DoneData) => setData(fn);
   const toggleTask = (id: string) => update(d => ({ ...d, tasks: d.tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t) }));
+  const updateTask = (id: string, updates: Partial<Omit<Task, 'id' | 'createdAt'>>) => update(d => ({ ...d, tasks: d.tasks.map(task => task.id === id ? { ...task, ...updates } : task) }));
   const addTask = (task: Task) => update(d => ({ ...d, tasks: [{ ...task, order: 0 }, ...normalizeOrder(d.tasks).map(t => ({ ...t, order: (t.order ?? 0) + 1 }))] }));
   const addTasks = (tasks: Task[]) => update(d => {
     const existingIds = new Set(d.tasks.map(task => task.id));
@@ -94,7 +96,7 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
   const toggleSetting = (key: BooleanSetting) => update(d => ({ ...d, settings: { ...d.settings, [key]: !d.settings[key] } }));
   const setTimezone = (timezone: string) => update(d => ({ ...d, settings: { ...d.settings, timezone } }));
 
-  return <DoneContext.Provider value={{ data, toggleTask, addTask, addTasks, addMember, createProject, snoozeTask, moveTask, reorderTasks, toggleSetting, setTimezone }}>{children}</DoneContext.Provider>;
+  return <DoneContext.Provider value={{ data, toggleTask, updateTask, addTask, addTasks, addMember, createProject, snoozeTask, moveTask, reorderTasks, toggleSetting, setTimezone }}>{children}</DoneContext.Provider>;
 }
 
 export const useDone = () => {
