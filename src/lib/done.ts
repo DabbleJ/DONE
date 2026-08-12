@@ -1,6 +1,6 @@
 export type Member = { id: string; name: string; initial: string; color: string; managed?: boolean };
 export type Category = { id: string; name: string; color: string; owner?: string };
-export type Project = { id: string; name: string; emoji: string; color: string; completed: number; total: number };
+export type Project = { id: string; name: string; emoji: string; color: string; completed: number; total: number; description?: string; targetEndDate?: string };
 export type Task = { id: string; title: string; note?: string; due?: string; category: string; assignee: string; project?: string; energy: 'quick' | 'focus' | 'errand'; priority?: 'low' | 'medium' | 'high'; order?: number; completed: boolean; createdAt: string; snoozed?: boolean };
 export type BooleanSetting = 'doneVoice' | 'celebrations' | 'quietHours';
 export type DoneData = { tasks: Task[]; projects: Project[]; members: Member[]; categories: Category[]; settings: { doneVoice: boolean; celebrations: boolean; quietHours: boolean; timezone: string } };

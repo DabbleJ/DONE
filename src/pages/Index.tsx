@@ -35,6 +35,7 @@ function TaskRow({ task, onDone, onSnooze, onMove, onReorder, onFilter, big = fa
   const { data } = useDone();
   const category = data.categories.find(c => c.id === task.category);
   const member = data.members.find(m => m.id === task.assignee);
+  const project = data.projects.find(p => p.id === task.project);
   const [dragging, setDragging] = useState(false);
   const priorityLabel = task.priority === 'high' ? 'Now' : task.priority === 'medium' ? 'Soon' : 'Whenever';
   const assigneeLabel = member?.name ?? titleCase(task.assignee);
@@ -51,7 +52,7 @@ function TaskRow({ task, onDone, onSnooze, onMove, onReorder, onFilter, big = fa
   return <article data-task-id={task.id} draggable={Boolean(onReorder)} onDragStart={event => { setDragging(true); event.dataTransfer.setData('text/plain', task.id); event.dataTransfer.effectAllowed = 'move'; }} onDragOver={event => { if (onReorder) event.preventDefault(); }} onDrop={event => { event.preventDefault(); setDragging(false); const activeId = event.dataTransfer.getData('text/plain'); if (activeId) onReorder?.(activeId, task.id); }} onDragEnd={() => setDragging(false)} className={`group flex items-start gap-2 transition ${dragging ? 'scale-[.99] opacity-60' : ''} ${big ? 'paper-card p-4 sm:p-5' : 'border-b py-4 last:border-0'}`}>
     <button aria-label={`Drag ${task.title}`} className="mt-0.5 touch-none rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-grab active:cursor-grabbing" onPointerDown={event => { if (!onReorder) return; event.currentTarget.setPointerCapture(event.pointerId); setDragging(true); }} onPointerUp={event => finishPointerDrag(event.clientX, event.clientY)}><GripVertical size={18} /></button>
     <button aria-label={`Complete ${task.title}`} onClick={onDone} className={`mt-0.5 flex shrink-0 items-center justify-center rounded-full border-2 border-foreground/25 transition hover:border-primary hover:bg-secondary ${big ? 'h-8 w-8' : 'h-7 w-7'}`}>{task.completed && <Check size={16} />}</button>
-    <div className="min-w-0 flex-1"><h3 className={`${big ? 'text-[17px]' : 'text-[15px]'} font-bold leading-snug ${task.completed ? 'line-through opacity-45' : ''}`}>{task.title}</h3><div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{task.due && <button onClick={() => onFilter?.({ type: 'due', value: task.due!, label: task.due! })} className={`rounded-full px-2.5 py-1 font-bold transition hover:-translate-y-0.5 ${task.due === 'Today' ? 'bg-[#f8ddd4] text-[#a64937]' : 'bg-muted'}`}>{task.due}</button>}{!task.due && task.priority && <span className={`rounded-full px-2.5 py-1 font-bold ${task.priority === 'high' ? 'bg-[#f8ddd4] text-[#a64937]' : task.priority === 'medium' ? 'bg-[#fff0d4] text-[#85611d]' : 'bg-muted'}`}>{priorityLabel}</span>}<button onClick={() => category && onFilter?.({ type: 'category', value: category.id, label: category.name })} className="rounded-full px-2.5 py-1 transition hover:-translate-y-0.5" style={{ backgroundColor: category?.color }}>{category?.name ?? 'Unsorted'}</button><span className="flex items-center gap-1"><span className="h-4 w-4 rounded-full text-center text-[9px] font-bold leading-4 text-white" style={{ background: assigneeColor }}>{assigneeInitial}</span>{assigneeLabel}</span></div></div>
+    <div className="min-w-0 flex-1"><h3 className={`${big ? 'text-[17px]' : 'text-[15px]'} font-bold leading-snug ${task.completed ? 'line-through opacity-45' : ''}`}>{task.title}</h3><div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{task.due && <button onClick={() => onFilter?.({ type: 'due', value: task.due!, label: task.due! })} className={`rounded-full px-2.5 py-1 font-bold transition hover:-translate-y-0.5 ${task.due === 'Today' ? 'bg-[#f8ddd4] text-[#a64937]' : 'bg-muted'}`}>{task.due}</button>}{!task.due && task.priority && <span className={`rounded-full px-2.5 py-1 font-bold ${task.priority === 'high' ? 'bg-[#f8ddd4] text-[#a64937]' : task.priority === 'medium' ? 'bg-[#fff0d4] text-[#85611d]' : 'bg-muted'}`}>{priorityLabel}</span>}<button onClick={() => category && onFilter?.({ type: 'category', value: category.id, label: category.name })} className="rounded-full px-2.5 py-1 transition hover:-translate-y-0.5" style={{ backgroundColor: category?.color }}>{category?.name ?? 'Unsorted'}</button>{project && <span className="flex items-center gap-1 rounded-full bg-[#e8e1f3] px-2.5 py-1 font-bold text-[#624b82]"><FolderKanban size={12} />{project.name}</span>}<span className="flex items-center gap-1"><span className="h-4 w-4 rounded-full text-center text-[9px] font-bold leading-4 text-white" style={{ background: assigneeColor }}>{assigneeInitial}</span>{assigneeLabel}</span></div></div>
     <div className="flex shrink-0 flex-col gap-1 opacity-80 sm:opacity-0 sm:transition sm:group-hover:opacity-100"><button onClick={() => onMove?.('up')} className="rounded-full p-1.5 text-muted-foreground hover:bg-muted" aria-label="Move up"><ArrowUp size={14} /></button><button onClick={() => onMove?.('down')} className="rounded-full p-1.5 text-muted-foreground hover:bg-muted" aria-label="Move down"><ArrowDown size={14} /></button></div>
     {onSnooze && <button onClick={onSnooze} className="rounded-full p-2 text-muted-foreground hover:bg-muted" aria-label="Not now"><Clock3 size={17} /></button>}
   </article>;
@@ -89,7 +90,68 @@ function TasksView({ complete, filter, onFilter, clearFilter }: { complete: (id:
   </div>;
 }
 
-function ProjectsView() { const { data } = useDone(); return <div className="animate-in-soft"><p className="eyebrow">Keep the big stuff moving</p><h1 className="mt-1 text-4xl">Projects</h1>{data.projects.length ? <div className="mt-6 grid gap-4 sm:grid-cols-2">{data.projects.map(p => <article key={p.id} className="paper-card overflow-hidden"><div className="p-5" style={{ background: p.color }}><div className="flex justify-between text-3xl"><span>{p.emoji}</span><MoreHorizontal /></div><h2 className="mt-8 text-2xl leading-tight">{p.name}</h2></div><div className="p-5"><div className="mb-2 flex justify-between text-xs font-bold"><span>{p.completed} of {p.total} done</span><span>{Math.round(p.completed / p.total * 100)}%</span></div><Progress value={p.completed / p.total * 100} className="h-2" /></div></article>)}</div> : <div className="paper-card mt-6 p-8 text-center"><h2 className="text-2xl">No projects yet.</h2><p className="mt-2 text-muted-foreground">Import from Notion or start one when there’s a bigger outcome to track.</p></div>}<button className="mt-4 flex min-h-28 w-full items-center justify-center rounded-[1.75rem] border-2 border-dashed text-muted-foreground hover:border-primary hover:text-primary"><Plus className="mr-2" />Start a project</button></div>; }
+const projectColors = ['#DDF0D9', '#F9DED7', '#DFE7F3', '#F5E9C8', '#E7DFF3'];
+const projectEmojis = ['🎯', '🏡', '✈️', '🎉', '🌱'];
+
+type DraftProjectTask = { id: string; title: string; assignee: string };
+
+function ProjectsView() {
+  const { data, createProject, toggleTask } = useDone();
+  const [creating, setCreating] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [targetEndDate, setTargetEndDate] = useState('');
+  const [draftTasks, setDraftTasks] = useState<DraftProjectTask[]>([{ id: crypto.randomUUID(), title: '', assignee: 'household' }]);
+  const selectedProject = data.projects.find(project => project.id === selectedProjectId);
+  const selectedTasks = ordered(data.tasks.filter(task => task.project === selectedProjectId));
+
+  const closeCreator = () => {
+    setCreating(false);
+    setName('');
+    setDescription('');
+    setTargetEndDate('');
+    setDraftTasks([{ id: crypto.randomUUID(), title: '', assignee: 'household' }]);
+  };
+  const submitProject = () => {
+    const cleanName = name.trim();
+    const cleanDescription = description.trim();
+    if (!cleanName || !cleanDescription || !targetEndDate) return;
+    if (data.projects.some(project => project.name.toLowerCase() === cleanName.toLowerCase())) {
+      toast.error(`${cleanName} already exists.`);
+      return;
+    }
+    const projectId = crypto.randomUUID();
+    const tasks: Task[] = draftTasks.filter(task => task.title.trim()).map(task => ({
+      id: crypto.randomUUID(),
+      title: task.title.trim(),
+      category: 'home',
+      assignee: task.assignee,
+      project: projectId,
+      energy: 'focus',
+      completed: false,
+      createdAt: new Date().toISOString(),
+    }));
+    const visualIndex = data.projects.length % projectColors.length;
+    createProject({ id: projectId, name: cleanName, description: cleanDescription, targetEndDate, emoji: projectEmojis[visualIndex], color: projectColors[visualIndex], completed: 0, total: tasks.length }, tasks);
+    toast.success(`${cleanName} is ready to roll.`);
+    closeCreator();
+  };
+  const formatDate = (date?: string) => date ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T00:00:00`)) : 'No target date';
+
+  return <div className="animate-in-soft"><p className="eyebrow">Keep the big stuff moving</p><h1 className="mt-1 text-4xl">Projects</h1>{data.projects.length ? <div className="mt-6 grid gap-4 sm:grid-cols-2">{data.projects.map(project => {
+    const linkedTasks = data.tasks.filter(task => task.project === project.id);
+    const total = linkedTasks.length || project.total;
+    const completed = linkedTasks.length ? linkedTasks.filter(task => task.completed).length : project.completed;
+    const percent = total ? Math.round(completed / total * 100) : 0;
+    return <button key={project.id} onClick={() => setSelectedProjectId(project.id)} className="paper-card overflow-hidden text-left transition hover:-translate-y-1"><div className="p-5" style={{ background: project.color }}><div className="flex justify-between text-3xl"><span>{project.emoji}</span><MoreHorizontal /></div><h2 className="mt-7 text-2xl leading-tight">{project.name}</h2>{project.description && <p className="mt-2 line-clamp-2 text-sm opacity-70">{project.description}</p>}</div><div className="p-5"><p className="mb-3 flex items-center gap-2 text-xs font-bold text-muted-foreground"><Clock3 size={14} />Target {formatDate(project.targetEndDate)}</p><div className="mb-2 flex justify-between text-xs font-bold"><span>{completed} of {total} done</span><span>{percent}%</span></div><Progress value={percent} className="h-2" /></div></button>;
+  })}</div> : <div className="paper-card mt-6 p-8 text-center"><h2 className="text-2xl">No projects yet.</h2><p className="mt-2 text-muted-foreground">Start with an outcome, a finish line, and the people who can help.</p></div>}<button onClick={() => setCreating(true)} className="mt-4 flex min-h-28 w-full items-center justify-center rounded-[1.75rem] border-2 border-dashed text-muted-foreground transition hover:border-primary hover:text-primary"><Plus className="mr-2" />Start a project</button>
+
+    <Dialog open={creating} onOpenChange={open => open ? setCreating(true) : closeCreator()}><DialogContent className="max-h-[90vh] overflow-y-auto rounded-[2rem] bg-card sm:max-w-2xl"><DialogHeader><DialogTitle className="text-3xl">Start something worth finishing</DialogTitle><DialogDescription>Define the outcome, pick a finish line, then share the work.</DialogDescription></DialogHeader><div className="space-y-5 pt-2"><div><label htmlFor="project-name" className="text-sm font-bold">Project name</label><Input id="project-name" autoFocus value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Refresh the kids’ room" maxLength={80} className="mt-2 h-12 rounded-2xl bg-background px-4" /></div><div><label htmlFor="project-description" className="text-sm font-bold">Short description</label><textarea id="project-description" value={description} onChange={event => setDescription(event.target.value)} placeholder="What does done look like?" maxLength={220} className="mt-2 min-h-24 w-full resize-none rounded-2xl border bg-background p-4 text-sm outline-none ring-primary focus:ring-2" /></div><div><label htmlFor="project-date" className="text-sm font-bold">Target end date</label><Input id="project-date" type="date" value={targetEndDate} min={new Date().toISOString().slice(0, 10)} onChange={event => setTargetEndDate(event.target.value)} className="mt-2 h-12 rounded-2xl bg-background px-4" /></div><div><div className="flex items-center justify-between"><div><p className="text-sm font-bold">Related tasks</p><p className="text-xs text-muted-foreground">Each task will be tagged to this project.</p></div><button type="button" onClick={() => setDraftTasks(tasks => [...tasks, { id: crypto.randomUUID(), title: '', assignee: 'household' }])} className="rounded-full bg-secondary px-3 py-2 text-xs font-bold text-primary"><Plus className="mr-1 inline" size={14} />Add task</button></div><div className="mt-3 space-y-3">{draftTasks.map((task, index) => <div key={task.id} className="rounded-2xl border bg-background p-3"><div className="flex gap-2"><Input value={task.title} onChange={event => setDraftTasks(tasks => tasks.map(item => item.id === task.id ? { ...item, title: event.target.value } : item))} placeholder={`Task ${index + 1}`} maxLength={100} className="h-11 rounded-xl" /><button type="button" onClick={() => setDraftTasks(tasks => tasks.filter(item => item.id !== task.id))} className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Remove task ${index + 1}`}><X size={18} /></button></div><label className="mt-3 block text-xs font-bold text-muted-foreground">Assigned to<select value={task.assignee} onChange={event => setDraftTasks(tasks => tasks.map(item => item.id === task.id ? { ...item, assignee: event.target.value } : item))} className="mt-1 h-10 w-full rounded-xl border bg-card px-3 text-sm font-bold text-foreground outline-none ring-primary focus:ring-2"><option value="household">Whole household</option>{data.members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label></div>)}</div></div><Button onClick={submitProject} disabled={!name.trim() || !description.trim() || !targetEndDate} className="h-12 w-full rounded-full text-base font-bold">Create project{draftTasks.filter(task => task.title.trim()).length ? ` with ${draftTasks.filter(task => task.title.trim()).length} tasks` : ''}</Button></div></DialogContent></Dialog>
+
+    <Dialog open={Boolean(selectedProject)} onOpenChange={open => { if (!open) setSelectedProjectId(null); }}><DialogContent className="max-h-[90vh] overflow-y-auto rounded-[2rem] bg-card sm:max-w-2xl">{selectedProject && <><DialogHeader><div className="mb-2 text-4xl">{selectedProject.emoji}</div><DialogTitle className="text-3xl">{selectedProject.name}</DialogTitle><DialogDescription className="text-base">{selectedProject.description || 'No description yet.'}</DialogDescription></DialogHeader><div className="flex items-center gap-2 rounded-2xl bg-secondary p-3 text-sm font-bold text-primary"><Clock3 size={17} />Target {formatDate(selectedProject.targetEndDate)}</div><div><div className="mb-2 flex items-center justify-between"><p className="eyebrow">Project tasks</p><span className="text-xs font-bold text-muted-foreground">{selectedTasks.filter(task => task.completed).length}/{selectedTasks.length} done</span></div><div className="paper-card px-4">{selectedTasks.length ? selectedTasks.map(task => <TaskRow key={task.id} task={task} onDone={() => toggleTask(task.id)} />) : <p className="py-8 text-center text-sm text-muted-foreground">No tasks attached yet.</p>}</div></div></>}</DialogContent></Dialog>
+  </div>;
+}
 
 const memberColors = ['#39A852', '#D86F56', '#5279B8', '#8A68B8', '#D09232', '#267F83'];
 

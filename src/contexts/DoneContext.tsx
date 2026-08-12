@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { BooleanSetting, DoneData, Member, mergeStarterData, starterData, Task } from '@/lib/done';
+import { BooleanSetting, DoneData, Member, mergeStarterData, Project, starterData, Task } from '@/lib/done';
 import { useSession } from './SessionContext';
 
 type DoneValue = {
@@ -9,6 +9,7 @@ type DoneValue = {
   addTask: (task: Task) => void;
   addTasks: (tasks: Task[]) => void;
   addMember: (member: Member) => void;
+  createProject: (project: Project, tasks: Task[]) => void;
   snoozeTask: (id: string) => void;
   moveTask: (id: string, direction: 'up' | 'down') => void;
   reorderTasks: (activeId: string, overId: string) => void;
@@ -50,6 +51,11 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
     return { ...d, tasks: [...incoming, ...shifted] };
   });
   const addMember = (member: Member) => update(d => ({ ...d, members: [...d.members, member] }));
+  const createProject = (project: Project, tasks: Task[]) => update(d => {
+    const incoming = tasks.map((task, order) => ({ ...task, order }));
+    const shifted = normalizeOrder(d.tasks).map(task => ({ ...task, order: (task.order ?? 0) + incoming.length }));
+    return { ...d, projects: [...d.projects, project], tasks: [...incoming, ...shifted] };
+  });
   const snoozeTask = (id: string) => update(d => ({ ...d, tasks: d.tasks.map(t => t.id === id ? { ...t, snoozed: true } : t) }));
   const moveTask = (id: string, direction: 'up' | 'down') => update(d => {
     const tasks = normalizeOrder(d.tasks);
@@ -73,7 +79,7 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
   const toggleSetting = (key: BooleanSetting) => update(d => ({ ...d, settings: { ...d.settings, [key]: !d.settings[key] } }));
   const setTimezone = (timezone: string) => update(d => ({ ...d, settings: { ...d.settings, timezone } }));
 
-  return <DoneContext.Provider value={{ data, toggleTask, addTask, addTasks, addMember, snoozeTask, moveTask, reorderTasks, toggleSetting, setTimezone }}>{children}</DoneContext.Provider>;
+  return <DoneContext.Provider value={{ data, toggleTask, addTask, addTasks, addMember, createProject, snoozeTask, moveTask, reorderTasks, toggleSetting, setTimezone }}>{children}</DoneContext.Provider>;
 }
 
 export const useDone = () => {
