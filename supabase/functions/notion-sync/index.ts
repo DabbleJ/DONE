@@ -130,8 +130,9 @@ serve(async (req) => {
           : /done|complete|finished/.test(statusName)
         const category = (categoryProperty?.select as { name?: string } | undefined)?.name
           ?? ((categoryProperty?.multi_select as Array<{ name?: string }> | undefined)?.[0]?.name)
-        const assignee = (assigneeProperty?.select as { name?: string } | undefined)?.name
-          ?? ((assigneeProperty?.people as Array<{ name?: string }> | undefined)?.[0]?.name)
+        const selectedAssignee = (assigneeProperty?.select as { name?: string } | undefined)?.name
+        const peopleAssignees = (assigneeProperty?.people as Array<{ name?: string }> | undefined)?.map(person => person.name).filter(Boolean) ?? []
+        const assignees = selectedAssignee ? [selectedAssignee] : peopleAssignees
 
         return {
           id: page.id,
@@ -140,7 +141,7 @@ serve(async (req) => {
           completed,
           dueDate: (dueProperty?.date as { start?: string } | undefined)?.start,
           category,
-          assignee,
+          assignees,
         }
       })
 

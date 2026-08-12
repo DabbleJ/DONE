@@ -8,7 +8,7 @@ import type { Task } from '@/lib/done';
 import { toast } from 'sonner';
 
 type DataSource = { id: string; title: string; url?: string };
-type NotionItem = { id: string; title: string; completed: boolean; dueDate?: string; category?: string; assignee?: string };
+type NotionItem = { id: string; title: string; completed: boolean; dueDate?: string; category?: string; assignees?: string[] };
 
 async function getFunctionError(error: unknown) {
   if (error && typeof error === 'object' && 'context' in error) {
@@ -73,8 +73,9 @@ export function NotionSettings() {
       const category = data.categories.find(candidate => candidate.name.toLowerCase() === categoryName)
         ?? data.categories.find(candidate => categoryName.includes(candidate.name.toLowerCase()))
         ?? data.categories.find(candidate => candidate.id === 'admin')!;
-      const assigneeName = item.assignee?.toLowerCase() ?? '';
-      const assignee = assigneeName.includes('heather') ? 'heather' : assigneeName.includes('jemal') ? 'jemal' : 'household';
+      const assigneeNames = (item.assignees ?? []).map(name => name.toLowerCase());
+      const namedAssignees = [assigneeNames.some(name => name.includes('heather')) ? 'heather' : '', assigneeNames.some(name => name.includes('jemal')) ? 'jemal' : ''].filter(Boolean);
+      const assignees = namedAssignees.length ? namedAssignees : ['household'];
       const due = item.dueDate
         ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(item.dueDate))
         : undefined;
@@ -84,7 +85,7 @@ export function NotionSettings() {
         completed: item.completed,
         due,
         category: category.id,
-        assignee,
+        assignees,
         energy: category.id === 'job-search' || category.id === 'global-resilience' ? 'focus' : 'quick',
         createdAt: new Date().toISOString(),
       };
