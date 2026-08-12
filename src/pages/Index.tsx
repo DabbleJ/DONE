@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -11,7 +12,7 @@ import { toast } from 'sonner';
 import { NotionSettings } from '@/components/NotionSettings';
 import { useDone } from '@/contexts/DoneContext';
 import { useSession } from '@/contexts/SessionContext';
-import { doneVoice, getTaskAssignees, Member, parseCapture, priorityEngine, Task } from '@/lib/done';
+import { doneVoice, getTaskAssignees, Member, parseCapture, priorityEngine, Project, Task } from '@/lib/done';
 
 type View = 'now' | 'tasks' | 'projects' | 'household' | 'settings';
 type TaskFilter = { type: 'category' | 'due'; value: string; label: string } | null;
@@ -148,15 +149,83 @@ const projectEmojis = ['🎯', '🏡', '✈️', '🎉', '🌱'];
 
 type DraftProjectTask = { id: string; title: string; assignees: string[] };
 
+function ProjectActions({ onEdit }: { onEdit: () => void }) {
+  return <DropdownMenu><DropdownMenuTrigger asChild><button type="button" aria-label="Project options" className="rounded-full p-2 transition hover:bg-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground"><MoreHorizontal /></button></DropdownMenuTrigger><DropdownMenuContent align="end" className="rounded-2xl p-2"><DropdownMenuItem onSelect={onEdit} className="cursor-pointer rounded-xl px-3 py-2 font-bold"><Pencil className="mr-2" size={16}/>Edit project</DropdownMenuItem></DropdownMenuContent></DropdownMenu>;
+}
+
+function ProjectEditor({ project, onClose }: { project: Project; onClose: () => void }) {
+  const { data, updateProject } = useDone();
+  const [name, setName] = useState(project.name);
+  const [description, setDescription] = useState(project.description ?? '');
+  const [targetEndDate, setTargetEndDate] = useState(project.targetEndDate ?? '');
+  const [emoji, setEmoji] = useState(project.emoji);
+  const [color, setColor] = useState(project.color);
+
+  const save = () => {
+    const cleanName = name.trim();
+    const cleanDescription = description.trim();
+    if (!cleanName || !cleanDescription || !targetEndDate) return;
+    if (data.projects.some(item => item.id !== project.id && item.name.toLowerCase() === cleanName.toLowerCase())) {
+      toast.error(`${cleanName} already exists.`);
+      return;
+    }
+    updateProject(project.id, { name: cleanName, description: cleanDescription, targetEndDate, emoji, color });
+    toast.success('Project updated.');
+    onClose();
+  };
+
+  return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className="max-h-[90vh] overflow-y-auto rounded-[2rem] bg-card sm:max-w-xl"><DialogHeader><DialogTitle className="text-3xl">Edit project</DialogTitle><DialogDescription>Keep the outcome, finish line and look up to date.</DialogDescription></DialogHeader><div className="space-y-5 pt-2">
+    <div><label htmlFor="edit-project-name" className="text-sm font-bold">Project name</label><Input id="edit-project-name" autoFocus value={name} onChange={event => setName(event.target.value)} maxLength={80} className="mt-2 h-12 rounded-2xl bg-background px-4" /></div>
+    <div><label htmlFor="edit-project-description" className="text-sm font-bold">Short description</label><textarea id="edit-project-description" value={description} onChange={event => setDescription(event.target.value)} maxLength={220} className="mt-2 min-h-24 w-full resize-none rounded-2xl border bg-background p-4 text-sm outline-none ring-primary focus:ring-2" /></div>
+    <div><label htmlFor="edit-project-date" className="text-sm font-bold">Target end date</label><Input id="edit-project-date" type="date" value={targetEndDate} onChange={event => setTargetEndDate(event.target.value)} className="mt-2 h-12 rounded-2xl bg-background px-4" /></div>
+    <div><p className="text-sm font-bold">Project icon</p><div className="mt-2 flex flex-wrap gap-2">{projectEmojis.map(option => <button key={option} type="button" aria-pressed={emoji === option} onClick={() => setEmoji(option)} className={`flex h-11 w-11 items-center justify-center rounded-2xl border text-xl transition ${emoji === option ? 'border-primary bg-secondary ring-2 ring-primary/20' : 'bg-background hover:border-primary/50'}`}>{option}</button>)}</div></div>
+    <div><p className="text-sm font-bold">Project color</p><div className="mt-2 flex flex-wrap gap-3">{projectColors.map(option => <button key={option} type="button" aria-label={`Choose ${option}`} aria-pressed={color === option} onClick={() => setColor(option)} className={`flex h-10 w-10 items-center justify-center rounded-full transition ${color === option ? 'ring-2 ring-foreground ring-offset-2 ring-offset-card' : 'hover:scale-105'}`} style={{ backgroundColor: option }}>{color === option && <Check size={17} strokeWidth={3}/>}</button>)}</div></div>
+    <div className="flex gap-3"><Button variant="outline" onClick={onClose} className="h-12 flex-1 rounded-full font-bold">Cancel</Button><Button onClick={save} disabled={!name.trim() || !description.trim() || !targetEndDate} className="h-12 flex-1 rounded-full font-bold">Save project</Button></div>
+  </div></DialogContent></Dialog>;
+}
+
+function AddProjectTask({ project, onClose }: { project: Project; onClose: () => void }) {
+  const { data, addTask } = useDone();
+  const [title, setTitle] = useState('');
+  const [note, setNote] = useState('');
+  const [due, setDue] = useState('');
+  const [priority, setPriority] = useState<Task['priority'] | ''>('');
+  const [category, setCategory] = useState('home');
+  const [assignees, setAssignees] = useState<string[]>(['household']);
+
+  const save = () => {
+    const cleanTitle = title.trim();
+    if (!cleanTitle) return;
+    addTask({ id: crypto.randomUUID(), title: cleanTitle, note: note.trim() || undefined, due: due.trim() || undefined, priority: priority || undefined, category, assignees, project: project.id, energy: 'focus', completed: false, createdAt: new Date().toISOString() });
+    toast.success(`Task added to ${project.name}.`);
+    onClose();
+  };
+
+  return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className="max-h-[90vh] overflow-y-auto rounded-[2rem] bg-card sm:max-w-xl"><DialogHeader><DialogTitle className="text-3xl">Add a project task</DialogTitle><DialogDescription>It will stay linked to {project.name} everywhere it appears.</DialogDescription></DialogHeader><div className="space-y-5 pt-2">
+    <div><label htmlFor="new-project-task-title" className="text-sm font-bold">Task</label><Input id="new-project-task-title" autoFocus value={title} onChange={event => setTitle(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') save(); }} placeholder="What needs doing?" maxLength={140} className="mt-2 h-12 rounded-2xl bg-background px-4" /></div>
+    <div><label htmlFor="new-project-task-note" className="text-sm font-bold">Notes</label><textarea id="new-project-task-note" value={note} onChange={event => setNote(event.target.value)} placeholder="Add anything useful…" maxLength={500} className="mt-2 min-h-24 w-full resize-none rounded-2xl border bg-background p-4 text-sm outline-none ring-primary focus:ring-2" /></div>
+    <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-bold">When<Input value={due} onChange={event => setDue(event.target.value)} placeholder="Today, Friday, Aug 10…" maxLength={40} className="mt-2 h-11 rounded-xl bg-background" /></label><label className="text-sm font-bold">Priority<select value={priority} onChange={event => setPriority(event.target.value as Task['priority'] | '')} className="mt-2 h-11 w-full rounded-xl border bg-background px-3 text-sm outline-none ring-primary focus:ring-2"><option value="">No priority</option><option value="high">Now</option><option value="medium">Soon</option><option value="low">Whenever</option></select></label></div>
+    <label className="block text-sm font-bold">Category<select value={category} onChange={event => setCategory(event.target.value)} className="mt-2 h-11 w-full rounded-xl border bg-background px-3 text-sm outline-none ring-primary focus:ring-2">{data.categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    <div><p className="text-sm font-bold">Assigned to</p><AssigneePicker value={assignees} members={data.members} onChange={setAssignees}/></div>
+    <div className="flex gap-3"><Button variant="outline" onClick={onClose} className="h-12 flex-1 rounded-full font-bold">Cancel</Button><Button onClick={save} disabled={!title.trim()} className="h-12 flex-1 rounded-full font-bold">Add task</Button></div>
+  </div></DialogContent></Dialog>;
+}
+
 function ProjectsView() {
   const { data, createProject, toggleTask } = useDone();
   const [creating, setCreating] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [addingTaskProjectId, setAddingTaskProjectId] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [targetEndDate, setTargetEndDate] = useState('');
   const [draftTasks, setDraftTasks] = useState<DraftProjectTask[]>([{ id: crypto.randomUUID(), title: '', assignees: ['household'] }]);
   const selectedProject = data.projects.find(project => project.id === selectedProjectId);
+  const editingProject = data.projects.find(project => project.id === editingProjectId);
+  const addingTaskProject = data.projects.find(project => project.id === addingTaskProjectId);
+  const editingTask = data.tasks.find(task => task.id === editingTaskId);
   const selectedTasks = ordered(data.tasks.filter(task => task.project === selectedProjectId));
 
   const closeCreator = () => {
@@ -197,12 +266,15 @@ function ProjectsView() {
     const total = linkedTasks.length || project.total;
     const completed = linkedTasks.length ? linkedTasks.filter(task => task.completed).length : project.completed;
     const percent = total ? Math.round(completed / total * 100) : 0;
-    return <button key={project.id} onClick={() => setSelectedProjectId(project.id)} className="paper-card overflow-hidden text-left transition hover:-translate-y-1"><div className="p-5" style={{ background: project.color }}><div className="flex justify-between text-3xl"><span>{project.emoji}</span><MoreHorizontal /></div><h2 className="mt-7 text-2xl leading-tight">{project.name}</h2>{project.description && <p className="mt-2 line-clamp-2 text-sm opacity-70">{project.description}</p>}</div><div className="p-5"><p className="mb-3 flex items-center gap-2 text-xs font-bold text-muted-foreground"><Clock3 size={14} />Target {formatDate(project.targetEndDate)}</p><div className="mb-2 flex justify-between text-xs font-bold"><span>{completed} of {total} done</span><span>{percent}%</span></div><Progress value={percent} className="h-2" /></div></button>;
+    return <article key={project.id} className="paper-card relative overflow-hidden transition hover:-translate-y-1"><button onClick={() => setSelectedProjectId(project.id)} className="w-full text-left"><div className="p-5" style={{ background: project.color }}><div className="text-3xl"><span>{project.emoji}</span></div><h2 className="mt-7 text-2xl leading-tight">{project.name}</h2>{project.description && <p className="mt-2 line-clamp-2 text-sm opacity-70">{project.description}</p>}</div><div className="p-5"><p className="mb-3 flex items-center gap-2 text-xs font-bold text-muted-foreground"><Clock3 size={14} />Target {formatDate(project.targetEndDate)}</p><div className="mb-2 flex justify-between text-xs font-bold"><span>{completed} of {total} done</span><span>{percent}%</span></div><Progress value={percent} className="h-2" /></div></button><div className="absolute right-3 top-3"><ProjectActions onEdit={() => setEditingProjectId(project.id)}/></div></article>;
   })}</div> : <div className="paper-card mt-6 p-8 text-center"><h2 className="text-2xl">No projects yet.</h2><p className="mt-2 text-muted-foreground">Start with an outcome, a finish line, and the people who can help.</p></div>}<button onClick={() => setCreating(true)} className="mt-4 flex min-h-28 w-full items-center justify-center rounded-[1.75rem] border-2 border-dashed text-muted-foreground transition hover:border-primary hover:text-primary"><Plus className="mr-2" />Start a project</button>
 
     <Dialog open={creating} onOpenChange={open => open ? setCreating(true) : closeCreator()}><DialogContent className="max-h-[90vh] overflow-y-auto rounded-[2rem] bg-card sm:max-w-2xl"><DialogHeader><DialogTitle className="text-3xl">Start something worth finishing</DialogTitle><DialogDescription>Define the outcome, pick a finish line, then share the work.</DialogDescription></DialogHeader><div className="space-y-5 pt-2"><div><label htmlFor="project-name" className="text-sm font-bold">Project name</label><Input id="project-name" autoFocus value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Refresh the kids’ room" maxLength={80} className="mt-2 h-12 rounded-2xl bg-background px-4" /></div><div><label htmlFor="project-description" className="text-sm font-bold">Short description</label><textarea id="project-description" value={description} onChange={event => setDescription(event.target.value)} placeholder="What does done look like?" maxLength={220} className="mt-2 min-h-24 w-full resize-none rounded-2xl border bg-background p-4 text-sm outline-none ring-primary focus:ring-2" /></div><div><label htmlFor="project-date" className="text-sm font-bold">Target end date</label><Input id="project-date" type="date" value={targetEndDate} min={new Date().toISOString().slice(0, 10)} onChange={event => setTargetEndDate(event.target.value)} className="mt-2 h-12 rounded-2xl bg-background px-4" /></div><div><div className="flex items-center justify-between"><div><p className="text-sm font-bold">Related tasks</p><p className="text-xs text-muted-foreground">Each task will be tagged to this project.</p></div><button type="button" onClick={() => setDraftTasks(tasks => [...tasks, { id: crypto.randomUUID(), title: '', assignees: ['household'] }])} className="rounded-full bg-secondary px-3 py-2 text-xs font-bold text-primary"><Plus className="mr-1 inline" size={14} />Add task</button></div><div className="mt-3 space-y-3">{draftTasks.map((task, index) => <div key={task.id} className="rounded-2xl border bg-background p-3"><div className="flex gap-2"><Input value={task.title} onChange={event => setDraftTasks(tasks => tasks.map(item => item.id === task.id ? { ...item, title: event.target.value } : item))} placeholder={`Task ${index + 1}`} maxLength={100} className="h-11 rounded-xl" /><button type="button" onClick={() => setDraftTasks(tasks => tasks.filter(item => item.id !== task.id))} className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Remove task ${index + 1}`}><X size={18} /></button></div><div className="mt-3"><p className="text-xs font-bold text-muted-foreground">Assigned to</p><AssigneePicker value={task.assignees} members={data.members} onChange={assignees => setDraftTasks(tasks => tasks.map(item => item.id === task.id ? { ...item, assignees } : item))}/></div></div>)}</div></div><Button onClick={submitProject} disabled={!name.trim() || !description.trim() || !targetEndDate} className="h-12 w-full rounded-full text-base font-bold">Create project{draftTasks.filter(task => task.title.trim()).length ? ` with ${draftTasks.filter(task => task.title.trim()).length} tasks` : ''}</Button></div></DialogContent></Dialog>
 
-    <Dialog open={Boolean(selectedProject)} onOpenChange={open => { if (!open) setSelectedProjectId(null); }}><DialogContent className="max-h-[90vh] overflow-y-auto rounded-[2rem] bg-card sm:max-w-2xl">{selectedProject && <><DialogHeader><div className="mb-2 text-4xl">{selectedProject.emoji}</div><DialogTitle className="text-3xl">{selectedProject.name}</DialogTitle><DialogDescription className="text-base">{selectedProject.description || 'No description yet.'}</DialogDescription></DialogHeader><div className="flex items-center gap-2 rounded-2xl bg-secondary p-3 text-sm font-bold text-primary"><Clock3 size={17} />Target {formatDate(selectedProject.targetEndDate)}</div><div><div className="mb-2 flex items-center justify-between"><p className="eyebrow">Project tasks</p><span className="text-xs font-bold text-muted-foreground">{selectedTasks.filter(task => task.completed).length}/{selectedTasks.length} done</span></div><div className="paper-card px-4">{selectedTasks.length ? selectedTasks.map(task => <TaskRow key={task.id} task={task} onDone={() => toggleTask(task.id)} />) : <p className="py-8 text-center text-sm text-muted-foreground">No tasks attached yet.</p>}</div></div></>}</DialogContent></Dialog>
+    <Dialog open={Boolean(selectedProject)} onOpenChange={open => { if (!open) setSelectedProjectId(null); }}><DialogContent className="max-h-[90vh] overflow-y-auto rounded-[2rem] bg-card sm:max-w-2xl">{selectedProject && <><DialogHeader><div className="flex items-start justify-between pr-8"><div><div className="mb-2 text-4xl">{selectedProject.emoji}</div><DialogTitle className="text-3xl">{selectedProject.name}</DialogTitle></div><ProjectActions onEdit={() => setEditingProjectId(selectedProject.id)}/></div><DialogDescription className="text-base">{selectedProject.description || 'No description yet.'}</DialogDescription></DialogHeader><div className="flex items-center gap-2 rounded-2xl bg-secondary p-3 text-sm font-bold text-primary"><Clock3 size={17} />Target {formatDate(selectedProject.targetEndDate)}</div><div><div className="mb-3 flex items-center justify-between gap-3"><div><p className="eyebrow">Project tasks</p><span className="text-xs font-bold text-muted-foreground">{selectedTasks.filter(task => task.completed).length}/{selectedTasks.length} done</span></div><Button onClick={() => setAddingTaskProjectId(selectedProject.id)} className="h-10 rounded-full px-4 font-bold"><Plus className="mr-2" size={16}/>Add task</Button></div><div className="paper-card px-4">{selectedTasks.length ? selectedTasks.map(task => <TaskRow key={task.id} task={task} onDone={() => toggleTask(task.id)} onOpen={() => setEditingTaskId(task.id)} />) : <div className="py-8 text-center"><p className="text-sm text-muted-foreground">No tasks attached yet.</p><button onClick={() => setAddingTaskProjectId(selectedProject.id)} className="mt-3 rounded-full px-4 py-2 text-sm font-bold text-primary hover:bg-secondary">Add the first task</button></div>}</div></div></>}</DialogContent></Dialog>
+    {editingProject && <ProjectEditor key={editingProject.id} project={editingProject} onClose={() => setEditingProjectId(null)}/>}
+    {addingTaskProject && <AddProjectTask key={addingTaskProject.id} project={addingTaskProject} onClose={() => setAddingTaskProjectId(null)}/>}
+    {editingTask && <TaskEditor key={editingTask.id} task={editingTask} onClose={() => setEditingTaskId(null)}/>}
   </div>;
 }
 
