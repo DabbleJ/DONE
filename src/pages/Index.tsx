@@ -373,13 +373,20 @@ function SettingsView() {
 function Capture({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) { const { addTask } = useDone(); const [text, setText] = useState(''); const submit = () => { if (!text.trim()) return; const parsed = parseCapture(text); addTask({ ...parsed, id: crypto.randomUUID(), completed: false, createdAt: new Date().toISOString() }); setText(''); onOpenChange(false); toast.success(doneVoice.capture); }; return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="mx-auto max-w-xl rounded-t-[2rem] bg-card"><DrawerHeader className="text-left"><DrawerTitle className="text-3xl">Drop it here.</DrawerTitle><DrawerDescription>Write it like you’d say it. We’ll sort the details.</DrawerDescription></DrawerHeader><div className="px-4 pb-8"><div className="rounded-[1.5rem] border-2 border-primary/30 bg-background p-3"><textarea autoFocus value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }} className="min-h-28 w-full resize-none bg-transparent p-2 text-lg outline-none" placeholder="e.g. Interview follow-up tomorrow for Jemal" /><div className="flex items-center justify-between"><button className="rounded-full p-3 text-primary"><Mic /></button><Button onClick={submit} className="rounded-full px-6 font-bold">Add it <ChevronRight className="ml-1" size={17} /></Button></div></div><p className="mt-3 text-center text-xs text-muted-foreground">Try a person, day or place — DONE. will catch it.</p></div></DrawerContent></Drawer>; }
 
 export default function Index() {
-  const [view, setView] = useState<View>('now');
+  const { household, households, switchHousehold } = useHousehold();
+  const [view, setView] = useState<View>(() => {
+    const openUsKey = `done-open-us-household-${household.id}`;
+    if (sessionStorage.getItem(openUsKey) === '1') {
+      sessionStorage.removeItem(openUsKey);
+      return 'household';
+    }
+    return 'now';
+  });
   const [filter, setFilter] = useState<TaskFilter>(null);
   const [capture, setCapture] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const { data, toggleTask, snoozeTask } = useDone();
-  const { household, households, switchHousehold } = useHousehold();
   const editingTask = data.tasks.find(task => task.id === editingTaskId);
   const openFilter = (next: TaskFilter) => { setFilter(next); setView('tasks'); };
   const complete = (id: string) => { const task = data.tasks.find(t => t.id === id); toggleTask(id); if (task && !task.completed) { const messages = doneVoice.celebrations; toast.success(data.settings.doneVoice ? messages[Math.floor(Math.random() * messages.length)].title : 'Done.'); if (data.settings.celebrations && data.tasks.filter(t => t.completed).length % 3 === 2) setCelebrate(true); } };

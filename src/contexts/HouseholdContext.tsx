@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { ArrowRight, Home, Link2, Loader2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { HouseholdJoinOnboarding } from '@/components/HouseholdJoinOnboarding';
 import { supabase } from '@/integrations/supabase/client';
 import { useSession } from './SessionContext';
 
@@ -31,7 +32,7 @@ function rpcResult(data: unknown) {
   return value as RpcHousehold | null;
 }
 
-function HouseholdSetup({ onReady }: { onReady: () => Promise<void> }) {
+function HouseholdSetup({ onReady }: { onReady: (joinedHousehold?: RpcHousehold) => Promise<void> }) {
   const [mode, setMode] = useState<'choice' | 'create' | 'join'>('choice');
   const [name, setName] = useState('');
   const pathProjectId = window.location.pathname.match(/^\/join\/([^/]+)/i)?.[1] ?? '';
@@ -51,13 +52,14 @@ function HouseholdSetup({ onReady }: { onReady: () => Promise<void> }) {
     const functionName = mode === 'create' ? 'create_household' : 'join_household';
     const args = mode === 'create' ? { household_name: value } : { project_reference: value };
     const { data, error: requestError } = await supabase.rpc(functionName, args);
-    if (requestError || !rpcResult(data)) {
+    const result = rpcResult(data);
+    if (requestError || !result) {
       setSubmitting(false);
       setError(mode === 'join' && requestError?.message.includes('not found') ? 'We couldn’t find that household. Check the DONE URL or project ID.' : requestError?.message ?? 'Something went wrong. Please try again.');
       return;
     }
     window.history.replaceState({}, '', '/');
-    await onReady();
+    await onReady(mode === 'join' ? result : undefined);
     setSubmitting(false);
   };
 
@@ -92,6 +94,7 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
   const { session, demo } = useSession();
   const [households, setHouseholds] = useState<Household[]>(demo ? [demoHousehold] : []);
   const [household, setHousehold] = useState<Household | null>(demo ? demoHousehold : null);
+  const [pendingJoin, setPendingJoin] = useState<Household | null>(null);
   const [loading, setLoading] = useState(!demo);
 
   const loadHouseholds = useCallback(async () => {
@@ -156,17 +159,26 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase.rpc('join_household', { project_reference: reference.trim() });
     const result = rpcResult(data);
     if (error || !result) throw error ?? new Error('The home could not be joined.');
+    const alreadyMember = households.some(item => item.id === result.id);
+    const next: Household = { id: result.id, name: result.name, projectId: result.project_id, role: 'member' };
     await loadHouseholds();
-    return { id: result.id, name: result.name, projectId: result.project_id, role: 'member' };
+    if (!alreadyMember) setPendingJoin(next);
+    return next;
   };
   const leaveHousehold = async (id: string, close: boolean) => {
     const { error } = await supabase.rpc('leave_household', { target_household_id: id, close_household: close });
     if (error) throw error;
     await loadHouseholds();
   };
+  const finishInitialSetup = async (joinedHousehold?: RpcHousehold) => {
+    await loadHouseholds();
+    if (joinedHousehold) setPendingJoin({ id: joinedHousehold.id, name: joinedHousehold.name, projectId: joinedHousehold.project_id, role: 'member' });
+  };
+  const initialName = session ? [session.user.user_metadata.first_name, session.user.user_metadata.last_name].filter(Boolean).join(' ') || session.user.user_metadata.full_name || session.user.email?.split('@')[0] || '' : '';
 
   if (loading) return <div className="flex min-h-screen items-center justify-center"><div className="brand text-4xl">DONE<span>.</span></div></div>;
-  if (!household) return <HouseholdSetup onReady={loadHouseholds}/>;
+  if (pendingJoin) return <HouseholdJoinOnboarding household={pendingJoin} initialName={initialName} onComplete={() => setPendingJoin(null)}/>;
+  if (!household) return <HouseholdSetup onReady={finishInitialSetup}/>;
   return <HouseholdContext.Provider value={{ household, households, switchHousehold, createHousehold, joinHousehold, leaveHousehold }}>{children}</HouseholdContext.Provider>;
 }
 
