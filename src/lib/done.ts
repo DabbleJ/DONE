@@ -1,4 +1,5 @@
-export type Member = { id: string; name: string; initial: string; color: string; managed?: boolean };
+export type Pronouns = 'she/her' | 'he/him' | 'them/they';
+export type Member = { id: string; name: string; initial: string; color: string; pronouns?: Pronouns; managed?: boolean };
 export type Category = { id: string; name: string; color: string; owner?: string };
 export type Project = { id: string; name: string; emoji: string; color: string; completed: number; total: number; description?: string; targetEndDate?: string };
 export type Task = { id: string; title: string; note?: string; due?: string; category: string; assignees: string[]; project?: string; energy: 'quick' | 'focus' | 'errand'; priority?: 'low' | 'medium' | 'high'; order?: number; completed: boolean; createdAt: string; snoozed?: boolean };
