@@ -27,7 +27,7 @@ function Home() {
   const { household } = useHousehold();
   const storageKey = `done-onboarding-v2-${session?.user.id ?? 'demo'}`;
   const [showOnboarding, setShowOnboarding] = useState(() => household.role === 'owner' && localStorage.getItem(storageKey) !== '1');
-  return <DoneProvider><Index/><Onboarding open={showOnboarding} storageKey={storageKey} onComplete={() => setShowOnboarding(false)}/></DoneProvider>;
+  return <DoneProvider key={household.id}><Index/><Onboarding open={showOnboarding} storageKey={storageKey} onComplete={() => setShowOnboarding(false)}/></DoneProvider>;
 }
 
 function AppRoutes() {

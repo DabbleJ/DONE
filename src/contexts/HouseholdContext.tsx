@@ -1,11 +1,11 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { ArrowRight, Home, Link2, Loader2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useSession } from './SessionContext';
 
-type Household = {
+export type Household = {
   id: string;
   name: string;
   projectId: string;
@@ -14,11 +14,24 @@ type Household = {
 
 type HouseholdValue = {
   household: Household;
+  households: Household[];
+  switchHousehold: (id: string) => Promise<void>;
+  createHousehold: (name: string) => Promise<Household>;
+  joinHousehold: (reference: string) => Promise<Household>;
+  leaveHousehold: (id: string, close: boolean) => Promise<void>;
 };
 
-const HouseholdContext = createContext<HouseholdValue | null>(null);
+type RpcHousehold = { id: string; name: string; project_id: string };
 
-function HouseholdSetup({ onReady }: { onReady: (household: Household) => void }) {
+const HouseholdContext = createContext<HouseholdValue | null>(null);
+const demoHousehold: Household = { id: 'demo', name: 'Demo household', projectId: 'DEMOHOME', role: 'owner' };
+
+function rpcResult(data: unknown) {
+  const value = Array.isArray(data) ? data[0] : data;
+  return value as RpcHousehold | null;
+}
+
+function HouseholdSetup({ onReady }: { onReady: () => Promise<void> }) {
   const [mode, setMode] = useState<'choice' | 'create' | 'join'>('choice');
   const [name, setName] = useState('');
   const pathProjectId = window.location.pathname.match(/^\/join\/([^/]+)/i)?.[1] ?? '';
@@ -38,14 +51,14 @@ function HouseholdSetup({ onReady }: { onReady: (household: Household) => void }
     const functionName = mode === 'create' ? 'create_household' : 'join_household';
     const args = mode === 'create' ? { household_name: value } : { project_reference: value };
     const { data, error: requestError } = await supabase.rpc(functionName, args);
-    setSubmitting(false);
-    const result = Array.isArray(data) ? data[0] : data;
-    if (requestError || !result) {
+    if (requestError || !rpcResult(data)) {
+      setSubmitting(false);
       setError(mode === 'join' && requestError?.message.includes('not found') ? 'We couldn’t find that household. Check the DONE URL or project ID.' : requestError?.message ?? 'Something went wrong. Please try again.');
       return;
     }
     window.history.replaceState({}, '', '/');
-    onReady({ id: result.id, name: result.name, projectId: result.project_id, role: mode === 'create' ? 'owner' : 'member' });
+    await onReady();
+    setSubmitting(false);
   };
 
   return <main className="min-h-screen bg-background px-5 py-8 sm:py-12">
@@ -77,36 +90,84 @@ function HouseholdSetup({ onReady }: { onReady: (household: Household) => void }
 
 export function HouseholdProvider({ children }: { children: React.ReactNode }) {
   const { session, demo } = useSession();
-  const [household, setHousehold] = useState<Household | null>(demo ? { id: 'demo', name: 'Demo household', projectId: 'DEMOHOME', role: 'owner' } : null);
+  const [households, setHouseholds] = useState<Household[]>(demo ? [demoHousehold] : []);
+  const [household, setHousehold] = useState<Household | null>(demo ? demoHousehold : null);
   const [loading, setLoading] = useState(!demo);
 
-  useEffect(() => {
+  const loadHouseholds = useCallback(async () => {
     if (demo) {
-      setHousehold({ id: 'demo', name: 'Demo household', projectId: 'DEMOHOME', role: 'owner' });
+      setHouseholds([demoHousehold]);
+      setHousehold(demoHousehold);
       setLoading(false);
       return;
     }
     if (!session) return;
-    let active = true;
     setLoading(true);
-    supabase.from('household_members').select('household_id, role').eq('user_id', session.user.id).maybeSingle().then(async ({ data: membership }) => {
-      if (!active) return;
-      if (!membership) {
-        setHousehold(null);
-        setLoading(false);
-        return;
-      }
-      const { data: home } = await supabase.from('households').select('id, name, project_id').eq('id', membership.household_id).single();
-      if (!active) return;
-      setHousehold(home ? { id: home.id, name: home.name, projectId: home.project_id, role: membership.role as Household['role'] } : null);
+    const [{ data: memberships, error: membershipError }, { data: profile }] = await Promise.all([
+      supabase.from('household_members').select('household_id, role').eq('user_id', session.user.id),
+      supabase.from('profiles').select('active_household_id').eq('id', session.user.id).maybeSingle(),
+    ]);
+    if (membershipError || !memberships?.length) {
+      setHouseholds([]);
+      setHousehold(null);
       setLoading(false);
-    });
-    return () => { active = false; };
+      return;
+    }
+    const { data: homes, error: homesError } = await supabase.from('households').select('id, name, project_id').in('id', memberships.map(item => item.household_id));
+    if (homesError || !homes) {
+      setHouseholds([]);
+      setHousehold(null);
+      setLoading(false);
+      return;
+    }
+    const next = homes.map(home => ({
+      id: home.id,
+      name: home.name,
+      projectId: home.project_id,
+      role: memberships.find(item => item.household_id === home.id)?.role as Household['role'],
+    }));
+    const active = next.find(item => item.id === profile?.active_household_id) ?? next[0];
+    if (active && active.id !== profile?.active_household_id) await supabase.rpc('set_active_household', { target_household_id: active.id });
+    setHouseholds(next);
+    setHousehold(active ?? null);
+    setLoading(false);
   }, [demo, session]);
 
+  useEffect(() => { void loadHouseholds(); }, [loadHouseholds]);
+
+  const switchHousehold = async (id: string) => {
+    if (demo) return;
+    const next = households.find(item => item.id === id);
+    if (!next) throw new Error('You do not belong to that household.');
+    const { error } = await supabase.rpc('set_active_household', { target_household_id: id });
+    if (error) throw error;
+    setHousehold(next);
+  };
+  const createHousehold = async (name: string) => {
+    const { data, error } = await supabase.rpc('create_household', { household_name: name.trim() });
+    const result = rpcResult(data);
+    if (error || !result) throw error ?? new Error('The home could not be created.');
+    const next: Household = { id: result.id, name: result.name, projectId: result.project_id, role: 'owner' };
+    setHouseholds(current => [...current.filter(item => item.id !== next.id), next]);
+    setHousehold(next);
+    return next;
+  };
+  const joinHousehold = async (reference: string): Promise<Household> => {
+    const { data, error } = await supabase.rpc('join_household', { project_reference: reference.trim() });
+    const result = rpcResult(data);
+    if (error || !result) throw error ?? new Error('The home could not be joined.');
+    await loadHouseholds();
+    return { id: result.id, name: result.name, projectId: result.project_id, role: 'member' };
+  };
+  const leaveHousehold = async (id: string, close: boolean) => {
+    const { error } = await supabase.rpc('leave_household', { target_household_id: id, close_household: close });
+    if (error) throw error;
+    await loadHouseholds();
+  };
+
   if (loading) return <div className="flex min-h-screen items-center justify-center"><div className="brand text-4xl">DONE<span>.</span></div></div>;
-  if (!household) return <HouseholdSetup onReady={setHousehold}/>;
-  return <HouseholdContext.Provider value={{ household }}>{children}</HouseholdContext.Provider>;
+  if (!household) return <HouseholdSetup onReady={loadHouseholds}/>;
+  return <HouseholdContext.Provider value={{ household, households, switchHousehold, createHousehold, joinHousehold, leaveHousehold }}>{children}</HouseholdContext.Provider>;
 }
 
 export const useHousehold = () => {
