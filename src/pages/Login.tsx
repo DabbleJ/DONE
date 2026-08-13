@@ -7,11 +7,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useSession } from '@/contexts/SessionContext';
 import { DONE_AUTH_CALLBACK_URL } from '@/lib/urls';
 
-export default function Login(){
-  const { startDemo } = useSession();
+function PasswordVisibilityToggle({ authRef }: { authRef: React.RefObject<HTMLDivElement> }) {
   const [showPassword, setShowPassword] = useState(false);
-  const authRef = useRef<HTMLDivElement>(null);
-  const invited = new URLSearchParams(window.location.search).get('invited') === '1';
 
   useEffect(() => {
     const updatePasswordInputs = () => {
@@ -25,7 +22,19 @@ export default function Login(){
     const observer = new MutationObserver(updatePasswordInputs);
     if (authRef.current) observer.observe(authRef.current, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [showPassword]);
+  }, [authRef, showPassword]);
+
+  return <button type="button" onClick={() => setShowPassword(value => !value)} aria-pressed={showPassword} className="mt-3 flex items-center gap-2 rounded-full px-2 py-1 text-sm font-bold text-muted-foreground transition hover:text-foreground">{showPassword ? <EyeOff size={17}/> : <Eye size={17}/>} {showPassword ? 'Hide password' : 'Show password'}</button>;
+}
+
+export default function Login(){
+  const { startDemo } = useSession();
+  const authRef = useRef<HTMLDivElement>(null);
+  const search = new URLSearchParams(window.location.search);
+  const invited = search.get('invited') === '1';
+  const requestedNext = search.get('next');
+  const next = requestedNext?.startsWith('/join/') ? requestedNext : '';
+  const redirectTo = next ? `${DONE_AUTH_CALLBACK_URL}?next=${encodeURIComponent(next)}` : DONE_AUTH_CALLBACK_URL;
 
   return <main className="min-h-screen bg-background px-5 py-8 lg:grid lg:grid-cols-2 lg:gap-20 lg:px-16">
   <section className="mx-auto flex max-w-xl flex-col justify-between lg:mx-0">
@@ -36,5 +45,5 @@ export default function Login(){
       <span className="absolute bottom-7 right-10 text-3xl rotate-12">🦷</span></div>
       <h1 className="mt-10 text-4xl font-semibold leading-[1.05] sm:text-5xl">One calm place for<br/><em>all the family stuff.</em></h1><p className="mt-5 max-w-md text-lg leading-relaxed text-muted-foreground">Empty your head. DONE. keeps the whole lot, then shows you only what matters now.</p></div>
   </section>
-  <section className="mx-auto flex w-full max-w-md items-center"><div className="w-full rounded-[2rem] border bg-card p-6 shadow-[0_22px_70px_rgba(47,51,43,.10)] sm:p-9">{invited && <div className="mb-5 rounded-2xl bg-secondary p-4 text-sm font-bold text-primary">You’ve been invited to DONE. Sign in or create an account to join in.</div>}<h2 className="text-2xl font-semibold">Let’s make life lighter.</h2><p className="mb-6 mt-1 text-muted-foreground">Sign in or create your family space.</p><div ref={authRef}><Auth supabaseClient={supabase} redirectTo={DONE_AUTH_CALLBACK_URL} providers={[]} appearance={{theme:ThemeSupa,variables:{default:{colors:{brand:'#39A852',brandAccent:'#2f9045'},radii:{borderRadiusButton:'999px',buttonBorderRadius:'999px',inputBorderRadius:'14px'}}}}} theme="light"/></div><button type="button" onClick={()=>setShowPassword(value=>!value)} aria-pressed={showPassword} className="mt-3 flex items-center gap-2 rounded-full px-2 py-1 text-sm font-bold text-muted-foreground transition hover:text-foreground">{showPassword?<EyeOff size={17}/>:<Eye size={17}/>} {showPassword?'Hide password':'Show password'}</button><div className="my-5 flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border"/>or explore first<span className="h-px flex-1 bg-border"/></div><Button onClick={startDemo} variant="outline" className="h-12 w-full rounded-full border-foreground/20 font-bold">Try the family demo <ArrowRight className="ml-2" size={17}/></Button></div></section>
+  <section className="mx-auto flex w-full max-w-md items-center"><div className="w-full rounded-[2rem] border bg-card p-6 shadow-[0_22px_70px_rgba(47,51,43,.10)] sm:p-9">{invited && <div className="mb-5 rounded-2xl bg-secondary p-4 text-sm font-bold text-primary">You’ve been invited to DONE. Sign in or create an account to join in.</div>}<h2 className="text-2xl font-semibold">Let’s make life lighter.</h2><p className="mb-6 mt-1 text-muted-foreground">Sign in or create your family space.</p><div ref={authRef}><Auth supabaseClient={supabase} redirectTo={redirectTo} providers={[]} appearance={{theme:ThemeSupa,variables:{default:{colors:{brand:'#39A852',brandAccent:'#2f9045'},radii:{borderRadiusButton:'999px',buttonBorderRadius:'999px',inputBorderRadius:'14px'}}}}} theme="light"/></div><PasswordVisibilityToggle authRef={authRef}/><div className="my-5 flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border"/>or explore first<span className="h-px flex-1 bg-border"/></div><Button onClick={startDemo} variant="outline" className="h-12 w-full rounded-full border-foreground/20 font-bold">Try the family demo <ArrowRight className="ml-2" size={17}/></Button></div></section>
 </main>}

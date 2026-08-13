@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { BooleanSetting, DoneData, Member, mergeStarterData, Project, starterData, Task } from '@/lib/done';
 import { useSession } from './SessionContext';
+import { useHousehold } from './HouseholdContext';
 
 type DoneValue = {
   data: DoneData;
@@ -30,7 +31,8 @@ const readStoredData = (key: string) => {
 
 export function DoneProvider({ children }: { children: React.ReactNode }) {
   const { session } = useSession();
-  const storageKey = session ? `done-state-${session.user.id}` : 'done-state-demo';
+  const { household } = useHousehold();
+  const storageKey = session ? `done-state-household-${household.id}` : 'done-state-demo';
   const [data, setData] = useState<DoneData>(() => readStoredData(storageKey));
   const [hydrated, setHydrated] = useState(!session);
 
@@ -43,20 +45,20 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
 
     let active = true;
     setHydrated(false);
-    supabase.from('app_state').select('data').eq('user_id', session.user.id).single().then(({ data: row }) => {
+    supabase.from('app_state').select('data').eq('household_id', household.id).single().then(({ data: row }) => {
       if (!active) return;
       const remote = row?.data as unknown as DoneData | undefined;
       setData(remote && Array.isArray(remote.tasks) ? mergeStarterData(remote) : readStoredData(storageKey));
       setHydrated(true);
     });
     return () => { active = false; };
-  }, [session, storageKey]);
+  }, [household.id, session, storageKey]);
 
   useEffect(() => {
     if (!hydrated) return;
     localStorage.setItem(storageKey, JSON.stringify(data));
-    if (session) supabase.from('app_state').upsert({ user_id: session.user.id, data: JSON.parse(JSON.stringify(data)), updated_at: new Date().toISOString() }).then();
-  }, [data, hydrated, session, storageKey]);
+    if (session) supabase.from('app_state').update({ data: JSON.parse(JSON.stringify(data)), updated_at: new Date().toISOString() }).eq('household_id', household.id).then();
+  }, [data, household.id, hydrated, session, storageKey]);
 
   const update = (fn: (d: DoneData) => DoneData) => setData(fn);
   const toggleTask = (id: string) => update(d => ({ ...d, tasks: d.tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t) }));

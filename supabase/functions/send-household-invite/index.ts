@@ -41,9 +41,13 @@ serve(async (req) => {
 
     const body = await req.json()
     const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : ''
+    const projectId = typeof body?.projectId === 'string' ? body.projectId.trim().toUpperCase() : ''
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailPattern.test(email) || email.length > 254) {
       return jsonResponse({ error: 'Enter a valid email address.' }, 400)
+    }
+    if (!/^[A-Z0-9]{8}$/.test(projectId)) {
+      return jsonResponse({ error: 'That household project ID is invalid.' }, 400)
     }
     if (email === user.email?.toLowerCase()) {
       return jsonResponse({ error: 'Invite someone other than yourself.' }, 400)
@@ -53,9 +57,20 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
+    const { data: household } = await adminClient.from('households').select('id').eq('project_id', projectId).maybeSingle()
+    if (!household) {
+      return jsonResponse({ error: 'That household could not be found.' }, 404)
+    }
+    const { data: membership } = await adminClient.from('household_members').select('user_id').eq('household_id', household.id).eq('user_id', user.id).maybeSingle()
+    if (!membership) {
+      console.warn('[send-household-invite] rejected non-member invite', { userId: user.id })
+      return jsonResponse({ error: 'You can only invite people to your own household.' }, 403)
+    }
+
+    const nextPath = `/join/${projectId}`
     const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${doneAppUrl}/auth/callback`,
-      data: { invited_by: user.id },
+      redirectTo: `${doneAppUrl}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+      data: { invited_by: user.id, household_project_id: projectId },
     })
 
     if (inviteError) {

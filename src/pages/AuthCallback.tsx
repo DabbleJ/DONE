@@ -7,6 +7,8 @@ export default function AuthCallback() {
   const { session, loading } = useSession();
   const navigate = useNavigate();
   const [error, setError] = useState('');
+  const requestedNext = new URLSearchParams(window.location.search).get('next');
+  const next = requestedNext?.startsWith('/join/') ? requestedNext : '/';
 
   useEffect(() => {
     if (loading || session) return;
@@ -16,11 +18,11 @@ export default function AuthCallback() {
 
     supabase.auth.exchangeCodeForSession(code).then(({ error: exchangeError }) => {
       if (exchangeError) setError(exchangeError.message);
-      else navigate('/', { replace: true });
+      else navigate(next, { replace: true });
     });
-  }, [loading, navigate, session]);
+  }, [loading, navigate, next, session]);
 
-  if (session) return <Navigate to="/" replace />;
+  if (session) return <Navigate to={next} replace />;
 
   return <main className="flex min-h-screen items-center justify-center bg-background px-5">
     <div className="paper-card w-full max-w-md p-8 text-center">

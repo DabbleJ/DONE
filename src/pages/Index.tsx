@@ -12,9 +12,10 @@ import { toast } from 'sonner';
 import { NotionSettings } from '@/components/NotionSettings';
 import { useDone } from '@/contexts/DoneContext';
 import { useSession } from '@/contexts/SessionContext';
+import { useHousehold } from '@/contexts/HouseholdContext';
 import { supabase } from '@/integrations/supabase/client';
 import { doneVoice, getTaskAssignees, Member, parseCapture, priorityEngine, Project, Task } from '@/lib/done';
-import { DONE_LOGIN_URL } from '@/lib/urls';
+import { DONE_APP_URL } from '@/lib/urls';
 
 type View = 'now' | 'tasks' | 'projects' | 'household' | 'settings';
 type TaskFilter = { type: 'category' | 'due'; value: string; label: string } | null;
@@ -285,13 +286,14 @@ const memberColors = ['#39A852', '#D86F56', '#5279B8', '#8A68B8', '#D09232', '#2
 function HouseholdView() {
   const { data, addMember } = useDone();
   const { session, demo } = useSession();
+  const { household } = useHousehold();
   const [creating, setCreating] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [sendingInvite, setSendingInvite] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [color, setColor] = useState(memberColors[0]);
-  const inviteLink = `${DONE_LOGIN_URL}?invited=1`;
+  const inviteLink = `${DONE_APP_URL}/join/${household.projectId}`;
 
   const closeCreator = () => {
     setCreating(false);
@@ -327,7 +329,7 @@ function HouseholdView() {
 
     setSendingInvite(true);
     const { data: response, error } = await supabase.functions.invoke('send-household-invite', {
-      body: { email: cleanEmail },
+      body: { email: cleanEmail, projectId: household.projectId },
     });
     setSendingInvite(false);
     if (error || response?.error) {
@@ -373,12 +375,13 @@ export default function Index() {
   const [celebrate, setCelebrate] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const { data, toggleTask, snoozeTask } = useDone();
+  const { household } = useHousehold();
   const editingTask = data.tasks.find(task => task.id === editingTaskId);
   const openFilter = (next: TaskFilter) => { setFilter(next); setView('tasks'); };
   const complete = (id: string) => { const task = data.tasks.find(t => t.id === id); toggleTask(id); if (task && !task.completed) { const messages = doneVoice.celebrations; toast.success(data.settings.doneVoice ? messages[Math.floor(Math.random() * messages.length)].title : 'Done.'); if (data.settings.celebrations && data.tasks.filter(t => t.completed).length % 3 === 2) setCelebrate(true); } };
   const content = useMemo(() => view === 'now' ? <NowView complete={complete} snooze={snoozeTask} onFilter={openFilter} onOpenTask={setEditingTaskId} /> : view === 'tasks' ? <TasksView complete={complete} filter={filter} onFilter={openFilter} clearFilter={() => setFilter(null)} onOpenTask={setEditingTaskId} /> : view === 'projects' ? <ProjectsView /> : view === 'household' ? <HouseholdView /> : <SettingsView />, [view, data, filter]);
   return <div className="min-h-screen"><aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-card/95 p-7 lg:flex lg:flex-col"><Wordmark /><p className="mt-2 text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">Do · Organize · Now · Enjoy</p><nav className="mt-12 space-y-2">{nav.map(n => <button key={n.id} onClick={() => setView(n.id)} className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition ${view === n.id ? 'bg-secondary text-primary' : 'text-muted-foreground hover:bg-muted'}`}><n.icon size={19} />{n.label}</button>)}</nav><div className="mt-auto rounded-3xl bg-[#f8ddd4] p-4"><Sparkles size={20} className="text-[#bd5b47]" /><p className="mt-3 text-sm font-bold">Your household has finished {data.tasks.filter(t => t.completed).length} things.</p><p className="mt-1 text-xs text-muted-foreground">No streaks. No guilt. Just progress.</p></div></aside>
-    <header className="sticky top-0 z-20 border-b bg-background/90 px-5 py-4 backdrop-blur lg:ml-64"><div className="mx-auto flex max-w-3xl items-center justify-between"><div className="lg:hidden"><Wordmark /></div><div className="hidden lg:block"><p className="text-sm font-bold text-muted-foreground">Our household</p></div><div className="flex items-center gap-2"><button className="rounded-full p-2.5 hover:bg-muted"><Bell size={20} /></button><button onClick={() => setView('household')} className="flex h-9 w-9 items-center justify-center rounded-full bg-foreground text-xs font-bold text-background">D</button></div></div></header>
+    <header className="sticky top-0 z-20 border-b bg-background/90 px-5 py-4 backdrop-blur lg:ml-64"><div className="mx-auto flex max-w-3xl items-center justify-between"><div className="lg:hidden"><Wordmark /></div><div className="hidden lg:block"><p className="text-sm font-bold text-muted-foreground">{household.name}</p></div><div className="flex items-center gap-2"><button className="rounded-full p-2.5 hover:bg-muted"><Bell size={20} /></button><button onClick={() => setView('household')} className="flex h-9 w-9 items-center justify-center rounded-full bg-foreground text-xs font-bold text-background">D</button></div></div></header>
     <main className="px-5 pb-32 pt-7 lg:ml-64 lg:pb-16"><div className="mx-auto max-w-3xl">{content}</div></main><Button onClick={() => setCapture(true)} className="fixed bottom-[5.4rem] right-5 z-30 h-14 rounded-full px-5 text-base font-bold shadow-[0_12px_30px_rgba(57,168,82,.3)] lg:bottom-8 lg:right-8"><Plus className="mr-2" />Quick add</Button>
     <nav className="safe-bottom fixed inset-x-0 bottom-0 z-20 border-t bg-card/95 px-2 pt-2 backdrop-blur lg:hidden"><div className="mx-auto flex max-w-lg items-center justify-around">{nav.slice(0, 4).map(n => <button key={n.id} onClick={() => setView(n.id)} className={`flex min-w-16 flex-col items-center gap-1 rounded-xl py-1.5 text-[10px] font-bold ${view === n.id ? 'text-primary' : 'text-muted-foreground'}`}><n.icon size={20} strokeWidth={view === n.id ? 2.7 : 2} />{n.label}</button>)}<button onClick={() => setView('settings')} className={`flex min-w-16 flex-col items-center gap-1 py-1.5 text-[10px] font-bold ${view === 'settings' ? 'text-primary' : 'text-muted-foreground'}`}><Menu size={20} />More</button></div></nav>
     <Capture open={capture} onOpenChange={setCapture} />{editingTask && <TaskEditor key={editingTask.id} task={editingTask} onClose={() => setEditingTaskId(null)} />}<Dialog open={celebrate} onOpenChange={setCelebrate}><DialogContent className="max-w-sm rounded-[2rem] bg-card text-center"><DialogHeader><div className="mx-auto flex h-28 w-28 rotate-[-5deg] items-center justify-center rounded-full bg-secondary"><Check className="pop text-primary" size={66} strokeWidth={3} /><span className="absolute translate-x-14 -translate-y-10 text-2xl">✦</span><span className="absolute -translate-x-14 translate-y-9 text-2xl">🍦</span></div><DialogTitle className="pt-3 text-center text-3xl">That was a big one.</DialogTitle><DialogDescription className="text-center text-base">Take the win. Maybe even the good biscuits.</DialogDescription></DialogHeader><Button onClick={() => setCelebrate(false)} className="mt-2 rounded-full">Lovely, thanks</Button></DialogContent></Dialog></div>;
