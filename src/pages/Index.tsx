@@ -14,13 +14,13 @@ import { useDone } from '@/contexts/DoneContext';
 import { useSession } from '@/contexts/SessionContext';
 import { supabase } from '@/integrations/supabase/client';
 import { doneVoice, getTaskAssignees, Member, parseCapture, priorityEngine, Project, Task } from '@/lib/done';
+import { DONE_LOGIN_URL } from '@/lib/urls';
 
 type View = 'now' | 'tasks' | 'projects' | 'household' | 'settings';
 type TaskFilter = { type: 'category' | 'due'; value: string; label: string } | null;
 
 const nav = [{ id: 'now', label: 'Now', icon: Sun }, { id: 'tasks', label: 'Everything', icon: ListTodo }, { id: 'projects', label: 'Projects', icon: FolderKanban }, { id: 'household', label: 'Us', icon: Users }, { id: 'settings', label: 'Settings', icon: Settings }] as const;
 const timezones = [{ value: 'America/Los_Angeles', label: 'Pacific Time' }, { value: 'America/Denver', label: 'Mountain Time' }, { value: 'America/Chicago', label: 'Central Time' }, { value: 'America/New_York', label: 'Eastern Time' }, { value: 'Europe/London', label: 'London' }, { value: 'Europe/Berlin', label: 'Central Europe' }, { value: 'Asia/Dubai', label: 'Dubai' }, { value: 'Asia/Kolkata', label: 'India' }, { value: 'Asia/Tokyo', label: 'Tokyo' }, { value: 'Australia/Sydney', label: 'Sydney' }, { value: 'Pacific/Auckland', label: 'Auckland' }, { value: 'UTC', label: 'UTC' }];
-const DONE_APP_URL = 'https://done-family.vercel.app';
 const ordered = (tasks: Task[]) => [...tasks].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 const titleCase = (value?: string) => value ? value.replace(/-/g, ' ').replace(/\b\w/g, char => char.toUpperCase()) : 'Household';
 
@@ -291,7 +291,7 @@ function HouseholdView() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [color, setColor] = useState(memberColors[0]);
-  const inviteLink = `${DONE_APP_URL}/login?invited=1`;
+  const inviteLink = `${DONE_LOGIN_URL}?invited=1`;
 
   const closeCreator = () => {
     setCreating(false);
