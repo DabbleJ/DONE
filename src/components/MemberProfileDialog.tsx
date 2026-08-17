@@ -9,6 +9,11 @@ import { useDone } from '@/contexts/DoneContext';
 import { getTaskAssignees, type Member, type Pronouns } from '@/lib/done';
 
 const pronounOptions: Pronouns[] = ['she/her', 'he/him', 'them/they'];
+const requestErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') return error.message;
+  return fallback;
+};
 
 const resizeAvatar = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
@@ -85,7 +90,7 @@ export function MemberProfileDialog({ member, canEdit, canRemove, onClose }: { m
       toast.success(`${cleanName}’s profile is up to date.`);
       onClose();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'That profile could not be updated.');
+      toast.error(requestErrorMessage(error, 'That profile could not be updated.'));
       setSaving(false);
     }
   };
@@ -98,7 +103,7 @@ export function MemberProfileDialog({ member, canEdit, canRemove, onClose }: { m
       toast.success(`${member.name} was removed from this household.`);
       onClose();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'That member could not be removed.');
+      toast.error(requestErrorMessage(error, 'That member could not be removed.'));
       setRemoving(false);
     }
   };
