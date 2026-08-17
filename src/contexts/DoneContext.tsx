@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { BooleanSetting, DoneData, Member, mergeStarterData, Project, starterData, Task } from '@/lib/done';
+import { BooleanSetting, DoneData, getTaskAssignees, Member, mergeStarterData, Project, starterData, Task } from '@/lib/done';
 import { useSession } from './SessionContext';
 import { useHousehold } from './HouseholdContext';
 
@@ -11,7 +11,8 @@ type DoneValue = {
   addTask: (task: Task) => void;
   addTasks: (tasks: Task[]) => void;
   addMember: (member: Member) => void;
-  updateMember: (id: string, updates: Partial<Omit<Member, 'id'>>) => void;
+  updateMember: (id: string, updates: Partial<Omit<Member, 'id'>>) => Promise<void>;
+  removeMember: (id: string) => Promise<void>;
   createProject: (project: Project, tasks: Task[]) => void;
   updateProject: (id: string, updates: Partial<Omit<Project, 'id'>>) => void;
   snoozeTask: (id: string) => void;
@@ -111,7 +112,39 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
     return { ...d, tasks: [...incoming, ...shifted] };
   });
   const addMember = (member: Member) => update(d => ({ ...d, members: [...d.members, member] }));
-  const updateMember = (id: string, updates: Partial<Omit<Member, 'id'>>) => update(d => ({ ...d, members: d.members.map(member => member.id === id ? { ...member, ...updates } : member) }));
+  const updateMember = async (id: string, updates: Partial<Omit<Member, 'id'>>) => {
+    if (session) {
+      const current = dataRef.current.members.find(member => member.id === id);
+      if (!current) throw new Error('Household member not found.');
+      const next = { ...current, ...updates };
+      const { error } = await supabase.rpc('update_household_member', {
+        target_household_id: household.id,
+        target_member_id: id,
+        display_name: next.name,
+        preferred_pronouns: next.pronouns ?? null,
+        personality_hints: next.personalityHints ?? null,
+        avatar_data: next.avatar ?? null,
+      });
+      if (error) throw error;
+    }
+    update(d => ({ ...d, members: d.members.map(member => member.id === id ? { ...member, ...updates } : member) }), !session);
+  };
+  const removeMember = async (id: string) => {
+    const member = dataRef.current.members.find(item => item.id === id);
+    if (!member) throw new Error('Household member not found.');
+    if (session) {
+      const { error } = await supabase.rpc('remove_household_member', { target_household_id: household.id, target_member_id: id });
+      if (error) throw error;
+    }
+    update(d => ({
+      ...d,
+      members: d.members.filter(item => item.id !== id),
+      tasks: d.tasks.map(task => {
+        const assignees = getTaskAssignees(task).filter(assignee => assignee !== id && assignee !== member.userId);
+        return { ...task, assignees: assignees.length ? assignees : ['household'] };
+      }),
+    }), !session);
+  };
   const createProject = (project: Project, tasks: Task[]) => update(d => {
     const incoming = tasks.map((task, order) => ({ ...task, order }));
     const shifted = normalizeOrder(d.tasks).map(task => ({ ...task, order: (task.order ?? 0) + incoming.length }));
@@ -141,7 +174,7 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
   const toggleSetting = (key: BooleanSetting) => update(d => ({ ...d, settings: { ...d.settings, [key]: !d.settings[key] } }));
   const setTimezone = (timezone: string) => update(d => ({ ...d, settings: { ...d.settings, timezone } }));
 
-  return <DoneContext.Provider value={{ data, toggleTask, updateTask, addTask, addTasks, addMember, updateMember, createProject, updateProject, snoozeTask, moveTask, reorderTasks, toggleSetting, setTimezone }}>{children}</DoneContext.Provider>;
+  return <DoneContext.Provider value={{ data, toggleTask, updateTask, addTask, addTasks, addMember, updateMember, removeMember, createProject, updateProject, snoozeTask, moveTask, reorderTasks, toggleSetting, setTimezone }}>{children}</DoneContext.Provider>;
 }
 
 export const useDone = () => {

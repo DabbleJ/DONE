@@ -4,13 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { HouseholdJoinOnboarding } from '@/components/HouseholdJoinOnboarding';
 import { supabase } from '@/integrations/supabase/client';
+import type { HouseholdRole } from '@/lib/done';
 import { useSession } from './SessionContext';
 
 export type Household = {
   id: string;
   name: string;
   projectId: string;
-  role: 'owner' | 'member';
+  role: HouseholdRole;
 };
 
 type HouseholdValue = {
