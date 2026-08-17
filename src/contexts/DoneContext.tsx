@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { BooleanSetting, DoneData, Member, mergeStarterData, Project, starterData, Task } from '@/lib/done';
 import { useSession } from './SessionContext';
@@ -35,10 +35,20 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
   const storageKey = session ? `done-state-household-${household.id}` : 'done-state-demo';
   const [data, setData] = useState<DoneData>(() => readStoredData(storageKey));
   const [hydrated, setHydrated] = useState(!session);
+  const dataRef = useRef(data);
+
+  const applyRemoteData = (remote: DoneData) => {
+    const next = mergeStarterData(remote);
+    dataRef.current = next;
+    setData(next);
+    localStorage.setItem(storageKey, JSON.stringify(next));
+  };
 
   useEffect(() => {
     if (!session) {
-      setData(readStoredData('done-state-demo'));
+      const next = readStoredData('done-state-demo');
+      dataRef.current = next;
+      setData(next);
       setHydrated(true);
       return;
     }
@@ -48,20 +58,49 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
     supabase.from('app_state').select('data').eq('household_id', household.id).single().then(({ data: row }) => {
       if (!active) return;
       const remote = row?.data as unknown as DoneData | undefined;
-      setData(remote && Array.isArray(remote.tasks) ? mergeStarterData(remote) : readStoredData(storageKey));
+      if (remote && Array.isArray(remote.tasks)) applyRemoteData(remote);
+      else {
+        const next = readStoredData(storageKey);
+        dataRef.current = next;
+        setData(next);
+      }
       setHydrated(true);
     });
     return () => { active = false; };
   }, [household.id, session, storageKey]);
 
   useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem(storageKey, JSON.stringify(data));
-    if (session) supabase.from('app_state').update({ data: JSON.parse(JSON.stringify(data)), updated_at: new Date().toISOString() }).eq('household_id', household.id).then();
-  }, [data, household.id, hydrated, session, storageKey]);
+    if (!session || !hydrated) return;
+    const channel = supabase.channel(`household-state-${household.id}`).on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'app_state', filter: `household_id=eq.${household.id}` },
+      payload => {
+        const remote = payload.new.data as DoneData | undefined;
+        if (remote && Array.isArray(remote.tasks)) applyRemoteData(remote);
+      },
+    ).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [household.id, hydrated, session]);
 
-  const update = (fn: (d: DoneData) => DoneData) => setData(fn);
-  const toggleTask = (id: string) => update(d => ({ ...d, tasks: d.tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t) }));
+  const update = (fn: (d: DoneData) => DoneData, persistRemote = true) => {
+    const next = fn(dataRef.current);
+    dataRef.current = next;
+    setData(next);
+    localStorage.setItem(storageKey, JSON.stringify(next));
+    if (session && persistRemote) supabase.from('app_state').update({ data: JSON.parse(JSON.stringify(next)), updated_at: new Date().toISOString() }).eq('household_id', household.id).then();
+  };
+  const toggleTask = (id: string) => {
+    const task = dataRef.current.tasks.find(item => item.id === id);
+    if (!task) return;
+    const completed = !task.completed;
+    update(d => ({ ...d, tasks: d.tasks.map(item => item.id === id ? { ...item, completed } : item) }), !session);
+    if (session) supabase.rpc('set_task_completion', { target_household_id: household.id, target_task_id: id, is_completed: completed }).then(async ({ error }) => {
+      if (!error) return;
+      const { data: row } = await supabase.from('app_state').select('data').eq('household_id', household.id).single();
+      const remote = row?.data as unknown as DoneData | undefined;
+      if (remote && Array.isArray(remote.tasks)) applyRemoteData(remote);
+    });
+  };
   const updateTask = (id: string, updates: Partial<Omit<Task, 'id' | 'createdAt'>>) => update(d => ({ ...d, tasks: d.tasks.map(task => task.id === id ? { ...task, ...updates } : task) }));
   const addTask = (task: Task) => update(d => ({ ...d, tasks: [{ ...task, order: 0 }, ...normalizeOrder(d.tasks).map(t => ({ ...t, order: (t.order ?? 0) + 1 }))] }));
   const addTasks = (tasks: Task[]) => update(d => {
