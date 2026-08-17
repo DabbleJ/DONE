@@ -103,7 +103,21 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
       if (remote && Array.isArray(remote.tasks)) applyRemoteData(remote);
     });
   };
-  const updateTask = (id: string, updates: Partial<Omit<Task, 'id' | 'createdAt'>>) => update(d => ({ ...d, tasks: d.tasks.map(task => task.id === id ? { ...task, ...updates } : task) }));
+  const updateTask = (id: string, updates: Partial<Omit<Task, 'id' | 'createdAt'>>) => {
+    update(d => ({ ...d, tasks: d.tasks.map(task => task.id === id ? { ...task, ...updates } : task) }));
+    if (session && updates.assignees) {
+      void supabase.rpc('set_task_assignees', {
+        target_household_id: household.id,
+        target_task_id: id,
+        target_assignees: updates.assignees,
+      }).then(async ({ error }) => {
+        if (!error) return;
+        const { data: row } = await supabase.from('app_state').select('data').eq('household_id', household.id).single();
+        const remote = row?.data as unknown as DoneData | undefined;
+        if (remote && Array.isArray(remote.tasks)) applyRemoteData(remote);
+      });
+    }
+  };
   const addTask = (task: Task) => update(d => ({ ...d, tasks: [{ ...task, order: 0 }, ...normalizeOrder(d.tasks).map(t => ({ ...t, order: (t.order ?? 0) + 1 }))] }));
   const addTasks = (tasks: Task[]) => update(d => {
     const existingIds = new Set(d.tasks.map(task => task.id));
