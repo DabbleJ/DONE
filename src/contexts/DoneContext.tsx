@@ -11,6 +11,7 @@ type DoneValue = {
   addTask: (task: Task) => void;
   addTasks: (tasks: Task[]) => void;
   addMember: (member: Member) => void;
+  updateMember: (id: string, updates: Partial<Omit<Member, 'id'>>) => void;
   createProject: (project: Project, tasks: Task[]) => void;
   updateProject: (id: string, updates: Partial<Omit<Project, 'id'>>) => void;
   snoozeTask: (id: string) => void;
@@ -110,6 +111,7 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
     return { ...d, tasks: [...incoming, ...shifted] };
   });
   const addMember = (member: Member) => update(d => ({ ...d, members: [...d.members, member] }));
+  const updateMember = (id: string, updates: Partial<Omit<Member, 'id'>>) => update(d => ({ ...d, members: d.members.map(member => member.id === id ? { ...member, ...updates } : member) }));
   const createProject = (project: Project, tasks: Task[]) => update(d => {
     const incoming = tasks.map((task, order) => ({ ...task, order }));
     const shifted = normalizeOrder(d.tasks).map(task => ({ ...task, order: (task.order ?? 0) + incoming.length }));
@@ -139,7 +141,7 @@ export function DoneProvider({ children }: { children: React.ReactNode }) {
   const toggleSetting = (key: BooleanSetting) => update(d => ({ ...d, settings: { ...d.settings, [key]: !d.settings[key] } }));
   const setTimezone = (timezone: string) => update(d => ({ ...d, settings: { ...d.settings, timezone } }));
 
-  return <DoneContext.Provider value={{ data, toggleTask, updateTask, addTask, addTasks, addMember, createProject, updateProject, snoozeTask, moveTask, reorderTasks, toggleSetting, setTimezone }}>{children}</DoneContext.Provider>;
+  return <DoneContext.Provider value={{ data, toggleTask, updateTask, addTask, addTasks, addMember, updateMember, createProject, updateProject, snoozeTask, moveTask, reorderTasks, toggleSetting, setTimezone }}>{children}</DoneContext.Provider>;
 }
 
 export const useDone = () => {
