@@ -4,8 +4,45 @@ export type Member = { id: string; userId?: string; name: string; initial: strin
 export type Category = { id: string; name: string; color: string; owner?: string };
 export type Project = { id: string; name: string; emoji: string; color: string; completed: number; total: number; description?: string; targetEndDate?: string };
 export type Task = { id: string; title: string; note?: string; due?: string; category: string; assignees: string[]; project?: string; energy: 'quick' | 'focus' | 'errand'; priority?: 'low' | 'medium' | 'high'; order?: number; completed: boolean; createdAt: string; snoozed?: boolean };
-export type BooleanSetting = 'doneVoice' | 'celebrations' | 'quietHours';
-export type DoneData = { tasks: Task[]; projects: Project[]; members: Member[]; categories: Category[]; settings: { doneVoice: boolean; celebrations: boolean; quietHours: boolean; timezone: string } };
+export type BooleanSetting = 'doneVoice' | 'celebrations' | 'quietHours' | 'rewardNudges';
+export type DoneData = { tasks: Task[]; projects: Project[]; members: Member[]; categories: Category[]; settings: { doneVoice: boolean; celebrations: boolean; quietHours: boolean; rewardNudges: boolean; timezone: string } };
+export type FamilyReward = { emoji: string; title: string; detail: string };
+export const familyRewards: FamilyReward[] = [
+  { emoji: '🍦', title: 'Ice cream adventure', detail: 'Pick a flavor and make the outing part of the win.' },
+  { emoji: '🎬', title: 'Family movie night', detail: 'Blankets, snacks, and the winner chooses the film.' },
+  { emoji: '🧸', title: 'Special play time', detail: 'Twenty uninterrupted minutes where the kids choose the game.' },
+  { emoji: '🍕', title: 'Pick-the-dinner pass', detail: 'The household finisher gets tonight’s deciding vote.' },
+  { emoji: '🪩', title: 'Living-room dance party', detail: 'Three favorite songs. Ridiculous moves encouraged.' },
+];
+export const rewardForTask = (taskId: string) => familyRewards[[...taskId].reduce((total, char) => total + char.charCodeAt(0), 0) % familyRewards.length];
+
+const zonedDateKey = (date: Date, timezone: string) => {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  const value = (type: string) => parts.find(part => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+};
+const dueDateKey = (due: string, timezone: string, now: Date) => {
+  const clean = due.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+  const lower = clean.toLowerCase();
+  if (lower === 'today' || lower === 'tomorrow' || lower === 'this week') return null;
+  if (lower === 'yesterday') return '0000-01-01';
+  const includesYear = /\b\d{4}\b/.test(clean);
+  const currentYear = zonedDateKey(now, timezone).slice(0, 4);
+  const parsed = new Date(includesYear ? clean : `${clean}, ${currentYear}`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${parsed.getFullYear()}-${month}-${day}`;
+};
+export const isTaskPastTarget = (task: Task, projects: Project[], timezone: string, now = new Date()) => {
+  if (task.completed) return false;
+  const today = zonedDateKey(now, timezone);
+  const taskDate = task.due ? dueDateKey(task.due, timezone, now) : null;
+  const projectDate = task.project ? projects.find(project => project.id === task.project)?.targetEndDate : undefined;
+  return Boolean((taskDate && taskDate < today) || (projectDate && projectDate < today));
+};
+
 export const getTaskAssignees = (task: Task) => {
   const legacyTask = task as Task & { assignee?: string };
   return legacyTask.assignees?.length ? legacyTask.assignees : [legacyTask.assignee ?? 'household'];
@@ -22,7 +59,7 @@ export const starterData: DoneData = {
   ],
   projects: [],
   tasks: [],
-  settings: { doneVoice: true, celebrations: true, quietHours: true, timezone: 'America/Los_Angeles' },
+  settings: { doneVoice: true, celebrations: true, quietHours: true, rewardNudges: true, timezone: 'America/Los_Angeles' },
 };
 
 const legacySampleTasks = new Map([
