@@ -48,7 +48,7 @@ export function Onboarding({ open, storageKey, onComplete }: { open: boolean; st
 
   const submitEntry = (mode: 'guided' | 'free') => {
     if (!entry.trim()) return;
-    const parsed = parseCapture(entry);
+    const parsed = parseCapture(entry, data.settings.timezone);
     const task: PendingTask = mode === 'guided' ? { ...parsed, category: category.id } : parsed;
     setEntry('');
     if (!task.priority && !task.due) {

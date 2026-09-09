@@ -1,7 +1,7 @@
 import { Gift, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDone } from '@/contexts/DoneContext';
-import { isTaskPastTarget, rewardForTask } from '@/lib/done';
+import { formatTaskDueDate, isTaskPastTarget, rewardForTask } from '@/lib/done';
 
 export function FamilyRewardNudge({ onOpenTask }: { onOpenTask: (taskId: string) => void }) {
   const { data } = useDone();
@@ -30,7 +30,7 @@ export function FamilyRewardNudge({ onOpenTask }: { onOpenTask: (taskId: string)
         <p className="mt-1 max-w-xl text-sm leading-relaxed text-[#6d5327]">{reward.detail}</p>
         <div className="mt-4 rounded-2xl bg-white/65 p-3">
           <p className="truncate text-sm font-bold text-[#443114]">{task.title}</p>
-          <p className="mt-0.5 text-xs text-[#80622e]">{project ? `${project.name} missed its target date` : `${task.due} has passed`} · No guilt, just a fresh little reason.</p>
+          <p className="mt-0.5 text-xs text-[#80622e]">{project ? `${project.name} missed its target date` : `${formatTaskDueDate(task.due, timezone)} has passed`} · No guilt, just a fresh little reason.</p>
         </div>
       </div>
       <div className="flex items-center gap-3 sm:flex-col">

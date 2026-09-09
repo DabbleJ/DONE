@@ -21,24 +21,48 @@ const zonedDateKey = (date: Date, timezone: string) => {
   const value = (type: string) => parts.find(part => part.type === type)?.value ?? '';
   return `${value('year')}-${value('month')}-${value('day')}`;
 };
-const dueDateKey = (due: string, timezone: string, now: Date) => {
+const addDaysToDateKey = (dateKey: string, days: number) => {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+};
+export const normalizeTaskDueDate = (due?: string, timezone = 'America/Los_Angeles', now = new Date()) => {
+  if (!due?.trim()) return undefined;
   const clean = due.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+
   const lower = clean.toLowerCase();
-  if (lower === 'today' || lower === 'tomorrow' || lower === 'this week') return null;
-  if (lower === 'yesterday') return '0000-01-01';
-  const includesYear = /\b\d{4}\b/.test(clean);
-  const currentYear = zonedDateKey(now, timezone).slice(0, 4);
-  const parsed = new Date(includesYear ? clean : `${clean}, ${currentYear}`);
-  if (Number.isNaN(parsed.getTime())) return null;
-  const month = String(parsed.getMonth() + 1).padStart(2, '0');
-  const day = String(parsed.getDate()).padStart(2, '0');
-  return `${parsed.getFullYear()}-${month}-${day}`;
+  const today = zonedDateKey(now, timezone);
+  if (lower === 'today') return today;
+  if (lower === 'tomorrow') return addDaysToDateKey(today, 1);
+  if (lower === 'yesterday') return addDaysToDateKey(today, -1);
+  if (lower === 'this week') return addDaysToDateKey(today, 6);
+
+  const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const weekday = weekdays.indexOf(lower);
+  if (weekday >= 0) {
+    const [year, month, day] = today.split('-').map(Number);
+    const currentWeekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    return addDaysToDateKey(today, (weekday - currentWeekday + 7) % 7);
+  }
+
+  const currentYear = today.slice(0, 4);
+  const parsed = new Date(/\b\d{4}\b/.test(clean) ? clean : `${clean}, ${currentYear}`);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  const parsedMonth = String(parsed.getMonth() + 1).padStart(2, '0');
+  const parsedDay = String(parsed.getDate()).padStart(2, '0');
+  return `${parsed.getFullYear()}-${parsedMonth}-${parsedDay}`;
+};
+export const formatTaskDueDate = (due?: string, timezone = 'America/Los_Angeles') => {
+  const dateKey = normalizeTaskDueDate(due, timezone);
+  if (!dateKey) return due;
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, day)));
 };
 export const isTaskPastTarget = (task: Task, projects: Project[], timezone: string, now = new Date()) => {
   if (task.completed) return false;
   const today = zonedDateKey(now, timezone);
-  const taskDate = task.due ? dueDateKey(task.due, timezone, now) : null;
+  const taskDate = normalizeTaskDueDate(task.due, timezone, now);
   const projectDate = task.project ? projects.find(project => project.id === task.project)?.targetEndDate : undefined;
   return Boolean((taskDate && taskDate < today) || (projectDate && projectDate < today));
 };
@@ -78,10 +102,11 @@ const knownAssignees: Record<string, Omit<Member, 'id'>> = {
 export function mergeStarterData(data: DoneData): DoneData {
   const existingCategories = data.categories ?? [];
   const missingCategories = starterData.categories.filter(category => !existingCategories.some(existing => existing.id === category.id));
+  const timezone = data.settings?.timezone ?? starterData.settings.timezone;
   const tasks = (data.tasks ?? []).filter(task => legacySampleTasks.get(task.id) !== task.title).map((storedTask, index) => {
     const { assignee, ...task } = storedTask as Task & { assignee?: string };
     const assignees = task.assignees?.length ? task.assignees : [assignee ?? 'household'];
-    return { ...task, assignees: assignees.includes('household') ? ['household'] : [...new Set(assignees)], order: task.order ?? index };
+    return { ...task, due: normalizeTaskDueDate(task.due, timezone), assignees: assignees.includes('household') ? ['household'] : [...new Set(assignees)], order: task.order ?? index };
   });
   const members = (data.members ?? []).filter(member => legacyMembers.get(member.id) !== member.name);
   tasks.flatMap(task => task.assignees).forEach(assignee => {
@@ -114,4 +139,14 @@ export const doneVoice = {
     { title: 'You did the actual thing!', body: 'Against all odds—including the very persuasive sofa.', button: 'Take that, sofa', accent: '🛋️' },
   ],
 };
-export function parseCapture(input: string): Omit<Task,'id'|'createdAt'|'completed'> { const lower=input.toLowerCase(); const due=lower.includes('tomorrow')?'Tomorrow':lower.includes('today')?'Today':lower.includes('friday')?'Friday':undefined; const priority=lower.includes('urgent')||lower.includes('asap')||due==='Today'?'high':due?'medium':undefined; const namedAssignees=[lower.includes('heather')?'heather':'',lower.includes('jemal')?'jemal':''].filter(Boolean); const assignees=namedAssignees.length?namedAssignees:['household']; const category=lower.includes('global resilience')?'global-resilience':lower.includes('job')||lower.includes('resume')||lower.includes('interview')?'job-search':lower.includes('pick up')||lower.includes('buy')?'errands':lower.includes('school')||lower.includes('kids')?'family':lower.includes('book')||lower.includes('email')?'admin':'home'; const clean=input.replace(/\b(today|tomorrow|friday|for jemal|ask jemal to|for heather|ask heather to|urgent|asap)\b/gi,'').replace(/\s+/g,' ').trim(); return {title:clean.charAt(0).toUpperCase()+clean.slice(1),due,priority,category,assignees,energy:category==='errands'?'errand':'quick'}; }
+export function parseCapture(input: string, timezone = 'America/Los_Angeles'): Omit<Task,'id'|'createdAt'|'completed'> {
+  const lower = input.toLowerCase();
+  const dueText = lower.includes('tomorrow') ? 'Tomorrow' : lower.includes('today') ? 'Today' : lower.includes('friday') ? 'Friday' : undefined;
+  const due = normalizeTaskDueDate(dueText, timezone);
+  const priority = lower.includes('urgent') || lower.includes('asap') || dueText === 'Today' ? 'high' : due ? 'medium' : undefined;
+  const namedAssignees = [lower.includes('heather') ? 'heather' : '', lower.includes('jemal') ? 'jemal' : ''].filter(Boolean);
+  const assignees = namedAssignees.length ? namedAssignees : ['household'];
+  const category = lower.includes('global resilience') ? 'global-resilience' : lower.includes('job') || lower.includes('resume') || lower.includes('interview') ? 'job-search' : lower.includes('pick up') || lower.includes('buy') ? 'errands' : lower.includes('school') || lower.includes('kids') ? 'family' : lower.includes('book') || lower.includes('email') ? 'admin' : 'home';
+  const clean = input.replace(/\b(today|tomorrow|friday|for jemal|ask jemal to|for heather|ask heather to|urgent|asap)\b/gi, '').replace(/\s+/g, ' ').trim();
+  return { title: clean.charAt(0).toUpperCase() + clean.slice(1), due, priority, category, assignees, energy: category === 'errands' ? 'errand' : 'quick' };
+}

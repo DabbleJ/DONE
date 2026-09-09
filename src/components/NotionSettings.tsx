@@ -76,9 +76,7 @@ export function NotionSettings() {
       const assigneeNames = (item.assignees ?? []).map(name => name.toLowerCase());
       const namedAssignees = [assigneeNames.some(name => name.includes('heather')) ? 'heather' : '', assigneeNames.some(name => name.includes('jemal')) ? 'jemal' : ''].filter(Boolean);
       const assignees = namedAssignees.length ? namedAssignees : ['household'];
-      const due = item.dueDate
-        ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(item.dueDate))
-        : undefined;
+      const due = item.dueDate?.slice(0, 10);
       return {
         id: `notion:${item.id}`,
         title: item.title,
