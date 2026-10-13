@@ -13,14 +13,16 @@ import { FamilyRewardNudge } from '@/components/FamilyRewardNudge';
 import { HomeControls } from '@/components/HomeControls';
 import { MemberProfileDialog } from '@/components/MemberProfileDialog';
 import { NotionSettings } from '@/components/NotionSettings';
+import { TaskListPicker } from '@/components/TaskListPicker';
 import { useDone } from '@/contexts/DoneContext';
 import { useSession } from '@/contexts/SessionContext';
 import { useHousehold } from '@/contexts/HouseholdContext';
 import { supabase } from '@/integrations/supabase/client';
-import { doneVoice, FamilyReward, formatTaskDueDate, getTaskAssignees, isTaskPastTarget, Member, normalizeTaskDueDate, parseCapture, priorityEngine, Project, Pronouns, rewardForTask, Task } from '@/lib/done';
+import { doneVoice, FamilyReward, formatTaskDueDate, getTaskAssignees, getTaskList, isTaskPastTarget, Member, normalizeTaskDueDate, parseCapture, priorityEngine, Project, Pronouns, rewardForTask, Task, TaskList, taskLists } from '@/lib/done';
 import { DONE_APP_URL } from '@/lib/urls';
 
 type View = 'now' | 'tasks' | 'projects' | 'household' | 'settings';
+type TaskFormat = 'done' | 'productive';
 type TaskFilter = { type: 'category' | 'due'; value: string; label: string } | null;
 
 const nav = [{ id: 'now', label: 'Now', icon: Sun }, { id: 'tasks', label: 'Everything', icon: ListTodo }, { id: 'projects', label: 'Projects', icon: FolderKanban }, { id: 'household', label: 'Us', icon: Users }, { id: 'settings', label: 'Settings', icon: Settings }] as const;
@@ -92,11 +94,13 @@ function TaskEditor({ task, onClose }: { task: Task; onClose: () => void }) {
   const [category, setCategory] = useState(task.category);
   const [assignees, setAssignees] = useState(getTaskAssignees(task));
   const [project, setProject] = useState(task.project ?? '');
+  const [taskList, setTaskList] = useState<TaskList>(getTaskList(task));
 
   const save = () => {
     const cleanTitle = title.trim();
     if (!cleanTitle) return;
     updateTask(task.id, {
+      taskList,
       title: cleanTitle,
       note: note.trim() || undefined,
       due: due.trim() || undefined,
@@ -114,6 +118,7 @@ function TaskEditor({ task, onClose }: { task: Task; onClose: () => void }) {
     <div><label htmlFor="edit-task-note" className="text-sm font-bold">Notes</label><textarea id="edit-task-note" value={note} onChange={event => setNote(event.target.value)} placeholder="Add anything useful…" maxLength={500} className="mt-2 min-h-24 w-full resize-none rounded-2xl border bg-background p-4 text-sm outline-none ring-primary focus:ring-2" /></div>
     <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-bold">Deadline<Input type="date" value={due} onChange={event => setDue(event.target.value)} className="mt-2 h-11 rounded-xl bg-background" /></label><label className="text-sm font-bold">Priority<select value={priority} onChange={event => setPriority(event.target.value as Task['priority'] | '')} className="mt-2 h-11 w-full rounded-xl border bg-background px-3 text-sm outline-none ring-primary focus:ring-2"><option value="">No priority</option><option value="high">Now</option><option value="medium">Soon</option><option value="low">Whenever</option></select></label></div>
     <label className="block text-sm font-bold">Category<select value={category} onChange={event => setCategory(event.target.value)} className="mt-2 h-11 w-full rounded-xl border bg-background px-3 text-sm outline-none ring-primary focus:ring-2">{data.categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    <TaskListPicker value={taskList} onChange={setTaskList}/>
     <div><p className="text-sm font-bold">Assigned to</p><p className="mt-1 text-xs text-muted-foreground">Choose any number of people, or the whole household.</p><AssigneePicker value={assignees} members={data.members} onChange={setAssignees}/></div>
     <label className="block text-sm font-bold">Project<select value={project} onChange={event => setProject(event.target.value)} className="mt-2 h-11 w-full rounded-xl border bg-background px-3 text-sm outline-none ring-primary focus:ring-2"><option value="">No project</option>{data.projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     <div className="flex gap-3 pt-1"><Button variant="outline" onClick={onClose} className="h-12 flex-1 rounded-full font-bold">Cancel</Button><Button onClick={save} disabled={!title.trim()} className="h-12 flex-1 rounded-full font-bold">Save changes</Button></div>
@@ -137,7 +142,7 @@ function NowView({ complete, snooze, onFilter, onOpenTask }: { complete: (id: st
   </div>;
 }
 
-function TasksView({ complete, filter, onFilter, clearFilter, onOpenTask }: { complete: (id: string) => void; filter: TaskFilter; onFilter: (filter: TaskFilter) => void; clearFilter: () => void; onOpenTask: (id: string) => void }) {
+function TasksView({ complete, filter, onFilter, clearFilter, onOpenTask, taskFormat }: { complete: (id: string) => void; filter: TaskFilter; onFilter: (filter: TaskFilter) => void; clearFilter: () => void; onOpenTask: (id: string) => void; taskFormat: TaskFormat }) {
   const { data, moveTask, reorderTasks } = useDone();
   const [query, setQuery] = useState('');
   const [triage, setTriage] = useState(false);
@@ -146,10 +151,15 @@ function TasksView({ complete, filter, onFilter, clearFilter, onOpenTask }: { co
   const active = filtered.filter(t => t.title.toLowerCase().includes(query.toLowerCase()));
   const completed = ordered(data.tasks).filter(t => t.completed).filter(t => !filter || (filter.type === 'category' ? t.category === filter.value : t.due === filter.value)).filter(t => t.title.toLowerCase().includes(query.toLowerCase()));
   const triageItems = active.filter(t => !t.due).slice(0, 3);
-  return <div className="animate-in-soft"><div className="flex items-end justify-between"><div><p className="eyebrow">The whole lot</p><h1 className="mt-1 text-4xl">Everything</h1></div><Button onClick={() => setTriage(!triage)} variant="outline" className="rounded-full"><SlidersHorizontal size={16} className="mr-2" />Triage</Button></div>
+  const renderTask = (task: Task) => <TaskRow key={task.id} task={task} onDone={() => complete(task.id)} onOpen={() => onOpenTask(task.id)} onMove={direction => moveTask(task.id, direction)} onReorder={reorderTasks} onFilter={onFilter}/>;
+  return <div className="animate-in-soft"><div className="flex items-end justify-between gap-2"><div><p className="eyebrow">{taskFormat === 'productive' ? 'Three lists. Less mental clutter.' : 'The whole lot'}</p><h1 className="mt-1 text-4xl">{taskFormat === 'productive' ? 'Productive AF' : 'Everything'}</h1></div><Button onClick={() => setTriage(!triage)} variant="outline" className="rounded-full"><SlidersHorizontal size={16} className="mr-2" />Triage</Button></div>
     {filter && <div className="mt-5 flex items-center justify-between rounded-2xl bg-secondary p-3"><div><p className="text-xs font-bold uppercase tracking-wider text-primary">Filtered by</p><p className="font-bold">{filter.label}</p></div><button onClick={clearFilter} className="rounded-full p-2 hover:bg-background"><X size={18} /></button></div>}
     {triage && <div className="my-5 rounded-[1.75rem] bg-foreground p-5 text-background"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-widest text-[#9dddab]">Anti-overwhelm mode</p><h2 className="mt-1 text-2xl">Three loose ends. That’s all.</h2></div><button onClick={() => setTriage(false)}><X /></button></div><div className="mt-4 space-y-2">{triageItems.map(t => <div key={t.id} className="flex items-center gap-3 rounded-2xl bg-white/10 p-3"><button onClick={() => complete(t.id)} className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white/50"><Check size={14} /></button><span className="flex-1 text-sm font-bold">{t.title}</span><button className="text-xs text-white/70">Later</button></div>)}</div></div>}
-    <div className="relative my-5"><Search className="absolute left-4 top-3.5 text-muted-foreground" size={19} /><Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Find anything..." className="h-12 rounded-full bg-card pl-12" /></div><div className="paper-card px-5">{active.length ? active.map(t => <TaskRow key={t.id} task={t} onDone={() => complete(t.id)} onOpen={() => onOpenTask(t.id)} onMove={direction => moveTask(t.id, direction)} onReorder={reorderTasks} onFilter={onFilter} />) : <Empty />}</div>
+    <div className="relative my-5"><Search className="absolute left-4 top-3.5 text-muted-foreground" size={19} /><Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Find anything..." className="h-12 rounded-full bg-card pl-12" /></div>
+    {taskFormat === 'productive' ? <><FamilyRewardNudge onOpenTask={onOpenTask}/><div className="space-y-5">{taskLists.map(list => {
+      const tasks = active.filter(task => getTaskList(task) === list.id);
+      return <section key={list.id} className="paper-card overflow-hidden"><div className="flex items-center justify-between gap-3 border-b bg-secondary/50 px-5 py-4"><h2 className="text-2xl"><span aria-hidden="true">{list.emoji}</span> {list.label}</h2><span className="rounded-full bg-card px-3 py-1 text-sm font-bold text-primary">{tasks.length}</span></div><div className="px-5">{tasks.length ? tasks.map(renderTask) : <p className="py-6 text-sm text-muted-foreground">{query || filter ? 'No matching tasks in this list.' : 'Nothing here. A little breathing room.'}</p>}</div></section>;
+    })}</div><p className="mt-3 text-xs text-muted-foreground">Existing untagged tasks appear in Things to Do. Edit a task to move it to another list.</p></> : <div className="paper-card px-5">{active.length ? active.map(renderTask) : <Empty />}</div>}
     <div className="mt-7"><p className="eyebrow mb-3">By category</p><div className="grid grid-cols-2 gap-3">{data.categories.map(c => <button key={c.id} onClick={() => onFilter({ type: 'category', value: c.id, label: c.name })} className="rounded-3xl p-4 text-left transition hover:-translate-y-0.5" style={{ background: c.color }}><span className="font-bold">{c.name}</span><p className="mt-1 text-xs opacity-60">{c.owner ? `${c.owner} · ` : ''}{data.tasks.filter(t => t.category === c.id && !t.completed).length} open</p></button>)}</div></div>
     {completed.length > 0 && <section className="mt-10"><div className="mb-3 flex items-end justify-between"><div><p className="eyebrow text-primary">Done and dusted</p><h2 className="mt-1 text-2xl">Completed tasks</h2></div><span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold text-primary">{completed.length}</span></div><div className="paper-card px-5">{completed.map(task => <TaskRow key={task.id} task={task} onDone={() => complete(task.id)} onOpen={() => onOpenTask(task.id)} onFilter={onFilter}/>)}</div><p className="mt-3 text-center text-xs text-muted-foreground">Changed your mind? Tap the check to put something back.</p></section>}
   </div>;
@@ -203,11 +213,12 @@ function AddProjectTask({ project, onClose }: { project: Project; onClose: () =>
   const [priority, setPriority] = useState<Task['priority'] | ''>('');
   const [category, setCategory] = useState('home');
   const [assignees, setAssignees] = useState<string[]>(['household']);
+  const [taskList, setTaskList] = useState<TaskList>('do');
 
   const save = () => {
     const cleanTitle = title.trim();
     if (!cleanTitle) return;
-    addTask({ id: crypto.randomUUID(), title: cleanTitle, note: note.trim() || undefined, due: due.trim() || undefined, priority: priority || undefined, category, assignees, project: project.id, energy: 'focus', completed: false, createdAt: new Date().toISOString() });
+    addTask({ id: crypto.randomUUID(), title: cleanTitle, note: note.trim() || undefined, due: due.trim() || undefined, priority: priority || undefined, taskList, category, assignees, project: project.id, energy: 'focus', completed: false, createdAt: new Date().toISOString() });
     toast.success(`Task added to ${project.name}.`);
     onClose();
   };
@@ -217,6 +228,7 @@ function AddProjectTask({ project, onClose }: { project: Project; onClose: () =>
     <div><label htmlFor="new-project-task-note" className="text-sm font-bold">Notes</label><textarea id="new-project-task-note" value={note} onChange={event => setNote(event.target.value)} placeholder="Add anything useful…" maxLength={500} className="mt-2 min-h-24 w-full resize-none rounded-2xl border bg-background p-4 text-sm outline-none ring-primary focus:ring-2" /></div>
     <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-bold">Deadline<Input type="date" value={due} onChange={event => setDue(event.target.value)} className="mt-2 h-11 rounded-xl bg-background" /></label><label className="text-sm font-bold">Priority<select value={priority} onChange={event => setPriority(event.target.value as Task['priority'] | '')} className="mt-2 h-11 w-full rounded-xl border bg-background px-3 text-sm outline-none ring-primary focus:ring-2"><option value="">No priority</option><option value="high">Now</option><option value="medium">Soon</option><option value="low">Whenever</option></select></label></div>
     <label className="block text-sm font-bold">Category<select value={category} onChange={event => setCategory(event.target.value)} className="mt-2 h-11 w-full rounded-xl border bg-background px-3 text-sm outline-none ring-primary focus:ring-2">{data.categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    <TaskListPicker value={taskList} onChange={setTaskList}/>
     <div><p className="text-sm font-bold">Assigned to</p><AssigneePicker value={assignees} members={data.members} onChange={setAssignees}/></div>
     <div className="flex gap-3"><Button variant="outline" onClick={onClose} className="h-12 flex-1 rounded-full font-bold">Cancel</Button><Button onClick={save} disabled={!title.trim()} className="h-12 flex-1 rounded-full font-bold">Add task</Button></div>
   </div></DialogContent></Dialog>;
@@ -393,18 +405,40 @@ function SettingsView() {
     <NotionSettings /><div className="paper-card mt-4 p-5"><p className="font-bold">Coming next</p><p className="mt-1 text-sm text-muted-foreground">Voice capture, AI sorting and family notifications are ready for a future phase.</p></div><button onClick={signOut} className="mt-6 flex w-full items-center justify-center gap-2 rounded-full border py-3 text-sm font-bold"><LogOut size={17} />{demo ? 'Leave demo' : `Sign out ${session?.user.email ?? ''}`}</button></div>;
 }
 
-function Capture({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) { const { data, addTask } = useDone(); const [text, setText] = useState(''); const submit = () => { if (!text.trim()) return; const parsed = parseCapture(text, data.settings.timezone); addTask({ ...parsed, id: crypto.randomUUID(), completed: false, createdAt: new Date().toISOString() }); setText(''); onOpenChange(false); toast.success(doneVoice.capture); }; return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="mx-auto max-w-xl rounded-t-[2rem] bg-card"><DrawerHeader className="text-left"><DrawerTitle className="text-3xl">Drop it here.</DrawerTitle><DrawerDescription>Write it like you’d say it. We’ll sort the details.</DrawerDescription></DrawerHeader><div className="px-4 pb-8"><div className="rounded-[1.5rem] border-2 border-primary/30 bg-background p-3"><textarea autoFocus value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }} className="min-h-28 w-full resize-none bg-transparent p-2 text-lg outline-none" placeholder="e.g. Interview follow-up tomorrow for Jemal" /><div className="flex items-center justify-between"><button className="rounded-full p-3 text-primary"><Mic /></button><Button onClick={submit} className="rounded-full px-6 font-bold">Add it <ChevronRight className="ml-1" size={17} /></Button></div></div><p className="mt-3 text-center text-xs text-muted-foreground">Try a person, day or place — DONE. will catch it.</p></div></DrawerContent></Drawer>; }
+function Capture({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { data, addTask } = useDone();
+  const [text, setText] = useState('');
+  const [taskList, setTaskList] = useState<TaskList>('do');
+  const submit = () => {
+    if (!text.trim()) return;
+    const parsed = parseCapture(text, data.settings.timezone);
+    addTask({ ...parsed, taskList, id: crypto.randomUUID(), completed: false, createdAt: new Date().toISOString() });
+    setText('');
+    setTaskList('do');
+    onOpenChange(false);
+    toast.success(doneVoice.capture);
+  };
+  return <Drawer open={open} onOpenChange={onOpenChange}><DrawerContent className="mx-auto max-w-xl rounded-t-[2rem] bg-card"><DrawerHeader className="text-left"><DrawerTitle className="text-3xl">Drop it here.</DrawerTitle><DrawerDescription>Write it like you’d say it. We’ll sort the details.</DrawerDescription></DrawerHeader><div className="space-y-4 px-4 pb-8"><div className="rounded-[1.5rem] border-2 border-primary/30 bg-background p-3"><textarea autoFocus value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }} className="min-h-28 w-full resize-none bg-transparent p-2 text-lg outline-none" placeholder="e.g. Interview follow-up tomorrow for Jemal" /></div><TaskListPicker value={taskList} onChange={setTaskList}/><Button onClick={submit} disabled={!text.trim()} className="h-12 w-full rounded-full px-6 font-bold">Add it <ChevronRight className="ml-1" size={17} /></Button><p className="text-center text-xs text-muted-foreground">Try a person, day or place — DONE. will catch it.</p></div></DrawerContent></Drawer>;
+}
 
 export default function Index() {
   const { household, households, switchHousehold } = useHousehold();
+  const { session } = useSession();
+  const formatKey = `done-task-format-${session?.user.id ?? 'demo'}`;
+  const [taskFormat, setTaskFormat] = useState<TaskFormat>(() => localStorage.getItem(formatKey) === 'productive' ? 'productive' : 'done');
   const [view, setView] = useState<View>(() => {
     const openUsKey = `done-open-us-household-${household.id}`;
     if (sessionStorage.getItem(openUsKey) === '1') {
       sessionStorage.removeItem(openUsKey);
       return 'household';
     }
-    return 'now';
+    return localStorage.getItem(formatKey) === 'productive' ? 'tasks' : 'now';
   });
+  const changeFormat = (next: TaskFormat) => {
+    setTaskFormat(next);
+    localStorage.setItem(formatKey, next);
+    setView(next === 'productive' ? 'tasks' : 'now');
+  };
   const [filter, setFilter] = useState<TaskFilter>(null);
   const [capture, setCapture] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
@@ -423,10 +457,12 @@ export default function Index() {
     if (earnsReward) setUnlockedReward({ reward: rewardForTask(task.id), taskTitle: task.title });
     else if (data.settings.celebrations && data.tasks.filter(item => item.completed).length % 3 === 2) setCelebrate(true);
   };
-  const content = useMemo(() => view === 'now' ? <NowView complete={complete} snooze={snoozeTask} onFilter={openFilter} onOpenTask={setEditingTaskId} /> : view === 'tasks' ? <TasksView complete={complete} filter={filter} onFilter={openFilter} clearFilter={() => setFilter(null)} onOpenTask={setEditingTaskId} /> : view === 'projects' ? <ProjectsView complete={complete} /> : view === 'household' ? <HouseholdView /> : <SettingsView />, [view, data, filter]);
+  const content = useMemo(() => view === 'now' && taskFormat === 'done' ? <NowView complete={complete} snooze={snoozeTask} onFilter={openFilter} onOpenTask={setEditingTaskId} /> : view === 'tasks' || view === 'now' ? <TasksView complete={complete} filter={filter} onFilter={openFilter} clearFilter={() => setFilter(null)} onOpenTask={setEditingTaskId} taskFormat={taskFormat} /> : view === 'projects' ? <ProjectsView complete={complete} /> : view === 'household' ? <HouseholdView /> : <SettingsView />, [view, data, filter, taskFormat]);
   return <div className="min-h-screen"><aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-card/95 p-7 lg:flex lg:flex-col"><Wordmark /><p className="mt-2 text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">Do · Organize · Now · Enjoy</p><nav className="mt-12 space-y-2">{nav.map(n => <button key={n.id} onClick={() => setView(n.id)} className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition ${view === n.id ? 'bg-secondary text-primary' : 'text-muted-foreground hover:bg-muted'}`}><n.icon size={19} />{n.label}</button>)}</nav><div className="mt-auto rounded-3xl bg-[#f8ddd4] p-4"><Sparkles size={20} className="text-[#bd5b47]" /><p className="mt-3 text-sm font-bold">Your household has finished {data.tasks.filter(t => t.completed).length} things.</p><p className="mt-1 text-xs text-muted-foreground">No streaks. No guilt. Just progress.</p></div></aside>
     <header className="sticky top-0 z-20 border-b bg-background/90 px-4 py-4 backdrop-blur lg:ml-64 lg:px-5"><div className="mx-auto flex max-w-3xl items-center justify-between gap-2"><div className="lg:hidden"><Wordmark /></div><div className="ml-auto flex items-center gap-1 lg:gap-2"><button className="hidden rounded-full p-2.5 hover:bg-muted sm:block"><Bell size={20} /></button><DropdownMenu><DropdownMenuTrigger asChild><button aria-label="Open user and household menu" className="flex h-9 w-9 items-center justify-center rounded-full bg-foreground text-xs font-bold text-background transition hover:scale-105">D</button></DropdownMenuTrigger><DropdownMenuContent align="end" className="min-w-64 rounded-2xl p-2"><div className="px-3 pb-2 pt-1"><p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Switch home</p><p className="mt-1 truncate text-sm font-bold">{household.name}</p></div>{households.map(home => <DropdownMenuItem key={home.id} onSelect={() => { if (home.id !== household.id) switchHousehold(home.id).catch(() => toast.error('That home could not be opened.')); }} className={`cursor-pointer rounded-xl px-3 py-2.5 font-bold ${home.id === household.id ? 'bg-secondary text-primary' : ''}`}><span className="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs">{home.name.charAt(0).toUpperCase()}</span><span className="min-w-0 flex-1 truncate">{home.name}</span>{home.id === household.id && <Check size={16}/>}</DropdownMenuItem>)}<div className="my-1 h-px bg-border"/><DropdownMenuItem onSelect={() => setView('household')} className="cursor-pointer rounded-xl px-3 py-2.5 font-bold"><Users className="mr-2" size={17}/>Manage family & homes</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></div></header>
-    <main className="px-5 pb-32 pt-7 lg:ml-64 lg:pb-16"><div className="mx-auto max-w-3xl">{content}</div></main><Button onClick={() => setCapture(true)} className="fixed bottom-[5.4rem] right-5 z-30 h-14 rounded-full px-5 text-base font-bold shadow-[0_12px_30px_rgba(57,168,82,.3)] lg:bottom-8 lg:right-8"><Plus className="mr-2" />Quick add</Button>
+    <main className="px-5 pb-32 pt-7 lg:ml-64 lg:pb-16"><div className="mx-auto max-w-3xl">
+      <div className="mb-6"><div className="inline-flex flex-wrap gap-1 rounded-[1.5rem] border bg-card p-1.5" role="group" aria-label="Task format">{([{ id: 'done', label: 'D.O.N.E.' }, { id: 'productive', label: 'Productive AF' }] as const).map(format => <button key={format.id} type="button" aria-pressed={taskFormat === format.id} onClick={() => changeFormat(format.id)} className={`rounded-full px-5 py-2.5 text-sm font-bold transition ${taskFormat === format.id ? 'bg-primary text-primary-foreground shadow-sm' : 'text-foreground hover:bg-secondary'}`}>{format.label}</button>)}</div><p className="mt-2 text-xs text-muted-foreground">Same tasks, your kind of list. Remembered for you on this browser.</p></div>
+      {content}</div></main><Button onClick={() => setCapture(true)} className="fixed bottom-[5.4rem] right-5 z-30 h-14 rounded-full px-5 text-base font-bold shadow-[0_12px_30px_rgba(57,168,82,.3)] lg:bottom-8 lg:right-8"><Plus className="mr-2" />Quick add</Button>
     <nav className="safe-bottom fixed inset-x-0 bottom-0 z-20 border-t bg-card/95 px-2 pt-2 backdrop-blur lg:hidden"><div className="mx-auto flex max-w-lg items-center justify-around">{nav.slice(0, 4).map(n => <button key={n.id} onClick={() => setView(n.id)} className={`flex min-w-16 flex-col items-center gap-1 rounded-xl py-1.5 text-[10px] font-bold ${view === n.id ? 'text-primary' : 'text-muted-foreground'}`}><n.icon size={20} strokeWidth={view === n.id ? 2.7 : 2} />{n.label}</button>)}<button onClick={() => setView('settings')} className={`flex min-w-16 flex-col items-center gap-1 py-1.5 text-[10px] font-bold ${view === 'settings' ? 'text-primary' : 'text-muted-foreground'}`}><Menu size={20} />More</button></div></nav>
     <Capture open={capture} onOpenChange={setCapture} />{editingTask && <TaskEditor key={editingTask.id} task={editingTask} onClose={() => setEditingTaskId(null)} />}<Dialog open={celebrate} onOpenChange={setCelebrate}><DialogContent className="max-w-sm rounded-[2rem] bg-card text-center"><DialogHeader><div className="mx-auto flex h-28 w-28 rotate-[-5deg] items-center justify-center rounded-full bg-secondary"><Check className="pop text-primary" size={66} strokeWidth={3} /><span className="absolute translate-x-14 -translate-y-10 text-2xl">✦</span><span className="absolute -translate-x-14 translate-y-9 text-2xl">🍦</span></div><DialogTitle className="pt-3 text-center text-3xl">That was a big one.</DialogTitle><DialogDescription className="text-center text-base">Take the win. Maybe even the good biscuits.</DialogDescription></DialogHeader><Button onClick={() => setCelebrate(false)} className="mt-2 rounded-full">Lovely, thanks</Button></DialogContent></Dialog>
     <Dialog open={Boolean(unlockedReward)} onOpenChange={open => { if (!open) setUnlockedReward(null); }}><DialogContent className="max-w-sm overflow-hidden rounded-[2rem] border-[#edc977] bg-[#fff8e5] text-center"><DialogHeader><div className="mx-auto flex h-28 w-28 rotate-3 items-center justify-center rounded-[2rem] bg-white text-6xl shadow-sm">{unlockedReward?.reward.emoji}</div><p className="pt-3 text-xs font-bold uppercase tracking-[.16em] text-[#8b6320]">Family reward unlocked</p><DialogTitle className="text-center text-3xl text-[#443114]">{unlockedReward?.reward.title}</DialogTitle><DialogDescription className="text-center text-base text-[#6d5327]">“{unlockedReward?.taskTitle}” is done. {unlockedReward?.reward.detail}</DialogDescription></DialogHeader><Button onClick={() => setUnlockedReward(null)} className="mt-2 rounded-full bg-[#8b5d12] font-bold text-white hover:bg-[#704a0e]">We earned it!</Button></DialogContent></Dialog></div>;

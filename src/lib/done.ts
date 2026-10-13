@@ -3,7 +3,14 @@ export type HouseholdRole = 'owner' | 'admin' | 'member';
 export type Member = { id: string; userId?: string; name: string; initial: string; color: string; pronouns?: Pronouns; avatar?: string; personalityHints?: string; managed?: boolean; role?: HouseholdRole };
 export type Category = { id: string; name: string; color: string; owner?: string };
 export type Project = { id: string; name: string; emoji: string; color: string; completed: number; total: number; description?: string; targetEndDate?: string };
-export type Task = { id: string; title: string; note?: string; due?: string; category: string; assignees: string[]; project?: string; energy: 'quick' | 'focus' | 'errand'; priority?: 'low' | 'medium' | 'high'; order?: number; completed: boolean; createdAt: string; snoozed?: boolean };
+export type TaskList = 'buy' | 'do' | 'contact';
+export const taskLists = [
+  { id: 'buy', label: 'Stuff to Buy', emoji: '🛍️' },
+  { id: 'do', label: 'Things to Do', emoji: '✅' },
+  { id: 'contact', label: 'People to Contact', emoji: '💬' },
+] as const;
+export const getTaskList = (task: Task): TaskList => task.taskList ?? 'do';
+export type Task = { id: string; title: string; note?: string; due?: string; taskList?: TaskList; category: string; assignees: string[]; project?: string; energy: 'quick' | 'focus' | 'errand'; priority?: 'low' | 'medium' | 'high'; order?: number; completed: boolean; createdAt: string; snoozed?: boolean };
 export type BooleanSetting = 'doneVoice' | 'celebrations' | 'quietHours' | 'rewardNudges';
 export type DoneData = { tasks: Task[]; projects: Project[]; members: Member[]; categories: Category[]; settings: { doneVoice: boolean; celebrations: boolean; quietHours: boolean; rewardNudges: boolean; timezone: string } };
 export type FamilyReward = { emoji: string; title: string; detail: string };
